@@ -6,6 +6,7 @@ The backend has two processes:
 
 - `collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
 - `server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
+- `alerter.py`: watches new measurements in SQLite and sends ntfy alerts when CO2 is high.
 
 Tested hardware setup:
 
@@ -41,6 +42,27 @@ Static serving:
 
 - If `frontend/dist` exists, the backend serves it at `/`.
 - If it does not exist, API routes still work, but no frontend static files are served.
+
+### Alert Worker (`alerter.py`)
+
+- Polls the same SQLite DB for newly inserted measurements.
+- Sends ntfy notifications when CO2 crosses a high threshold.
+- Sends a recovery notification when CO2 returns below a clear threshold.
+- Persists alert state (`last_seen_id`, `in_alert`, `last_alert_ts`) in DB, so restarts do not spam.
+
+CLI options (selected):
+
+- `--db`: SQLite file path (default: `backend/data.db`), no env equivalent
+- `--poll-interval`: seconds between DB polls (default: `5`), env: `ALERTER_POLL_INTERVAL`
+- `--co2-high`: high alert threshold in ppm (default: `1500`), env: `ALERTER_CO2_HIGH`
+- `--co2-clear`: recovery threshold in ppm (default: `500`), env: `ALERTER_CO2_CLEAR`
+- `--cooldown-seconds`: minimum time between new high-alert starts (default: `1800`), env: `ALERTER_COOLDOWN_SECONDS`
+- `--repeat-seconds`: optional repeat reminder interval while still high (default: `0`, disabled), env: `ALERTER_REPEAT_SECONDS`
+- `--ntfy-url`: ntfy server base URL (default: `https://ntfy.sh`), env: `NTFY_URL`
+- `--ntfy-topic`: ntfy topic name (required if no env), env: `NTFY_TOPIC`
+- `--ntfy-token`: optional bearer token for protected topics, env: `NTFY_TOKEN`
+- `--ntfy-priority-high`: high-alert priority header (default: `4`), env: `NTFY_PRIORITY_HIGH`
+- `--ntfy-priority-clear`: recovery-alert priority header (default: `3`), env: `NTFY_PRIORITY_CLEAR`
 
 ## Requirements
 
@@ -90,12 +112,47 @@ source venv/bin/activate
 uvicorn server:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 3. Run the Alerter
+
+In a third terminal:
+
+```bash
+cd backend
+source venv/bin/activate
+NTFY_TOPIC=your-topic-name python alerter.py
+```
+
+Optional custom settings:
+
+```bash
+NTFY_TOPIC=your-topic-name \
+ALERTER_CO2_HIGH=1500 \
+ALERTER_CO2_CLEAR=500 \
+ALERTER_COOLDOWN_SECONDS=1800 \
+python alerter.py --db ./data.db --poll-interval 5
+```
+
+For development, using dotenv is recommended so you can load `alerter.env` across shells.
+
+Install dotenv CLI in your active virtual environment:
+
+```bash
+pip install "python-dotenv[cli]"
+```
+
+Run alerter with values from `alerter.env`:
+
+```bash
+dotenv -f ./alerter.env run -- python alerter.py --db ./data.db --poll-interval 5
+```
+
 ## Run as systemd Services (Linux / Raspberry Pi)
 
 The repository includes:
 
 - `airqmon-collector.service`
 - `airqmon-web.service`
+- `airqmon-alerter.service`
 
 ### 1. Prepare environment
 
@@ -113,6 +170,7 @@ The shipped units assume:
 - user: `admin`
 - working directory: `/home/admin/airqmon/backend`
 - python binary: `/home/admin/airqmon/backend/venv/bin/python`
+- alerter environment file: `/home/admin/airqmon/backend/alerter.env`
 
 If your setup differs, edit both service files first.
 
@@ -123,9 +181,26 @@ From repository root:
 ```bash
 sudo cp backend/airqmon-collector.service /etc/systemd/system/airqmon-collector.service
 sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
+sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
 sudo systemctl daemon-reload
+```
+
+Create the alerter env file from the sample:
+
+```bash
+cp /home/admin/airqmon/backend/alerter.env.example /home/admin/airqmon/backend/alerter.env
+```
+
+Then edit `/home/admin/airqmon/backend/alerter.env` and set at least:
+
+- `NTFY_TOPIC`
+
+Start and enable services:
+
+```bash
 sudo systemctl enable --now airqmon-collector.service
 sudo systemctl enable --now airqmon-web.service
+sudo systemctl enable --now airqmon-alerter.service
 ```
 
 ### 4. Verify status and logs
@@ -133,8 +208,10 @@ sudo systemctl enable --now airqmon-web.service
 ```bash
 sudo systemctl status airqmon-collector.service
 sudo systemctl status airqmon-web.service
+sudo systemctl status airqmon-alerter.service
 sudo journalctl -u airqmon-collector -f
 sudo journalctl -u airqmon-web -f
+sudo journalctl -u airqmon-alerter -f
 ```
 
 ## Data Storage

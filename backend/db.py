@@ -11,6 +11,10 @@ CREATE TABLE IF NOT EXISTS measurements (
     humidity REAL
 );
 CREATE INDEX IF NOT EXISTS idx_measurements_ts ON measurements(ts);
+CREATE TABLE IF NOT EXISTS kv_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 '''
 
 def get_conn(path: str) -> sqlite3.Connection:
@@ -44,3 +48,32 @@ def range_query(conn: sqlite3.Connection, start_ts: int, end_ts: int) -> List[Di
     cur = conn.cursor()
     rows = cur.execute('SELECT * FROM measurements WHERE ts BETWEEN ? AND ? ORDER BY ts ASC', (start_ts, end_ts)).fetchall()
     return [dict(r) for r in rows]
+
+
+def query_after_id(conn: sqlite3.Connection, last_id: int, limit: int = 500) -> List[Dict]:
+    cur = conn.cursor()
+    rows = cur.execute(
+        'SELECT * FROM measurements WHERE id > ? ORDER BY id ASC LIMIT ?',
+        (last_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_state(conn: sqlite3.Connection, key: str, default: Optional[str] = None) -> Optional[str]:
+    cur = conn.cursor()
+    row = cur.execute('SELECT value FROM kv_state WHERE key = ?', (key,)).fetchone()
+    if row is None:
+        return default
+    return row['value']
+
+
+def set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        '''
+        INSERT INTO kv_state(key, value)
+        VALUES(?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        ''',
+        (key, value),
+    )
+    conn.commit()

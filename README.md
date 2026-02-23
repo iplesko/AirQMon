@@ -22,6 +22,12 @@ The backend contains two runtime pieces:
   - Writes measurements (`co2`, `temperature`, `humidity`, timestamp) to `backend/data.db`.
   - Prunes data older than 7 days.
 
+- `alerter.py`
+  - Watches newly inserted measurements in SQLite.
+  - Sends ntfy notifications when CO2 is above a configurable threshold.
+  - Sends a recovery notification when CO2 falls below clear threshold.
+  - Persists alert state in DB so restarts avoid duplicate alerts.
+
 - `server.py`
   - Exposes API endpoints:
     - `GET /api/latest`: latest measurement.

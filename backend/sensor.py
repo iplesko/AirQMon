@@ -23,6 +23,12 @@ if _has_scd4x:
     except Exception:
         _device = None
 
+_sim_co2 = 400.0
+_sim_step = 100.0
+_sim_min = 400.0
+_sim_max = 2000.0
+_sim_rising = True
+
 
 def read_real():
     """Read values from the SCD4X device.
@@ -43,7 +49,20 @@ def read_real():
 
 def read_simulator():
     """Produce plausible synthetic sensor values for local development or when sensor is absent."""
-    base_co2 = 420 + random.uniform(-10, 10)
+    global _sim_co2, _sim_rising
+
+    base_co2 = _sim_co2
+    if _sim_rising:
+        _sim_co2 += _sim_step
+        if _sim_co2 >= _sim_max:
+            _sim_co2 = _sim_max
+            _sim_rising = False
+    else:
+        _sim_co2 -= _sim_step
+        if _sim_co2 <= _sim_min:
+            _sim_co2 = _sim_min
+            _sim_rising = True
+
     base_temp = 22 + random.uniform(-1.5, 1.5)
     base_hum = 45 + random.uniform(-3, 3)
     return (round(base_co2, 1), round(base_temp, 2), round(base_hum, 2))
