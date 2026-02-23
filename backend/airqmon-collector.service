@@ -1,0 +1,13 @@
+[Unit]
+Description=AirQMon Collector Service
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/airqmon/backend
+ExecStart=/home/admin/airqmon/backend/venv/bin/python /home/admin/airqmon/backend/collector.py --db /home/admin/airqmon/backend/data.db --interval 5
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
