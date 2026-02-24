@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
@@ -31,6 +31,25 @@ DB_PATH = os.path.join(BASE_DIR, 'data.db')
 
 conn = get_conn(DB_PATH)
 init_db(conn)
+
+
+@app.middleware('http')
+async def set_static_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+
+    if path == '/service-worker.js':
+        # Service worker scripts must be revalidated aggressively to pick up updates.
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    elif path in {'/', '/index.html'}:
+        # HTML shell should revalidate so clients discover new asset hashes quickly.
+        response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+
+    return response
 
 
 def int_from_state(raw: Optional[str], default: int) -> int:

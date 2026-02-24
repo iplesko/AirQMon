@@ -9,8 +9,12 @@ root.render(<App />)
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch((error) => {
-      console.error('Service worker registration failed', error)
-    })
+    const serviceWorkerUrl = `/service-worker.js?v=${encodeURIComponent(__AIRQMON_BUILD_ID__)}`
+    navigator.serviceWorker
+      .register(serviceWorkerUrl, { updateViaCache: 'none' })
+      .then((registration) => registration.update())
+      .catch((error) => {
+        console.error('Service worker registration failed', error)
+      })
   })
 }

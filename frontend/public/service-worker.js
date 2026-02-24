@@ -1,5 +1,54 @@
-const CACHE_NAME = 'airqmon-cache-v1'
-const APP_SHELL = ['/', '/manifest.webmanifest']
+const SW_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev'
+const CACHE_NAME = `airqmon-cache-${SW_VERSION}`
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest']
+
+function isCacheableResponse(response) {
+  return Boolean(response && response.status === 200)
+}
+
+async function putInCache(request, response) {
+  if (!isCacheableResponse(response)) return
+
+  const requestUrl = new URL(request.url)
+  if (requestUrl.origin !== self.location.origin) return
+  if (requestUrl.pathname === '/service-worker.js') return
+
+  const cache = await caches.open(CACHE_NAME)
+  await cache.put(request, response.clone())
+}
+
+async function networkFirst(request, fallbackToRoot) {
+  try {
+    const networkResponse = await fetch(request)
+    await putInCache(request, networkResponse)
+    return networkResponse
+  } catch (error) {
+    const cachedResponse = await caches.match(request)
+    if (cachedResponse) {
+      return cachedResponse
+    }
+
+    if (fallbackToRoot) {
+      const rootFallback = await caches.match('/')
+      if (rootFallback) {
+        return rootFallback
+      }
+    }
+
+    throw error
+  }
+}
+
+async function cacheFirst(request) {
+  const cachedResponse = await caches.match(request)
+  if (cachedResponse) {
+    return cachedResponse
+  }
+
+  const networkResponse = await fetch(request)
+  await putInCache(request, networkResponse)
+  return networkResponse
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,34 +77,24 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  const requestUrl = new URL(event.request.url)
+  const request = event.request
+  const requestUrl = new URL(request.url)
   if (requestUrl.origin === self.location.origin && requestUrl.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request))
+    // Let API requests bypass the service worker and hit the network directly.
     return
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse
-      }
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request, true))
+    return
+  }
 
-      return fetch(event.request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse
-          }
+  if (requestUrl.origin === self.location.origin && requestUrl.pathname === '/service-worker.js') {
+    event.respondWith(fetch(request))
+    return
+  }
 
-          const responseClone = networkResponse.clone()
-          caches
-            .open(CACHE_NAME)
-            .then((cache) => cache.put(event.request, responseClone))
-
-          return networkResponse
-        })
-        .catch(() => caches.match('/'))
-    })
-  )
+  event.respondWith(cacheFirst(request))
 })
 
 self.addEventListener('push', (event) => {
