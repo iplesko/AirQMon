@@ -37,6 +37,8 @@ Endpoints:
   - `start`/`end` are optional UNIX timestamps.
   - Defaults to the last 24 hours when omitted.
   - `points` defaults to `500`, max `10000`, and downsamples evenly.
+- `GET /api/config`: returns alert config (`ntfy_topic`, `co2_high`, `co2_clear`, `cooldown_seconds`).
+- `PUT /api/config`: replaces alert config values (`ntfy_topic`, `co2_high`, `co2_clear`, `cooldown_seconds`).
 
 Static serving:
 
@@ -52,11 +54,8 @@ Static serving:
 
 CLI options (selected):
 
-- `--db`: SQLite file path (default: `backend/data.db`), no env equivalent
-- `--poll-interval`: seconds between DB polls (default: `5`), env: `ALERTER_POLL_INTERVAL`
-- `--co2-high`: high alert threshold in ppm (default: `1500`), env: `ALERTER_CO2_HIGH`
-- `--co2-clear`: recovery threshold in ppm (default: `500`), env: `ALERTER_CO2_CLEAR`
-- `--cooldown-seconds`: minimum time between new high-alert starts (default: `1800`), env: `ALERTER_COOLDOWN_SECONDS`
+- `--db`: SQLite file path (default: `backend/data.db`)
+- `--poll-interval`: seconds between DB polls (default: `5`)
 
 ## Requirements
 
@@ -119,24 +118,7 @@ python alerter.py
 Optional custom settings:
 
 ```bash
-ALERTER_CO2_HIGH=1500 \
-ALERTER_CO2_CLEAR=500 \
-ALERTER_COOLDOWN_SECONDS=1800 \
 python alerter.py --db ./data.db --poll-interval 5
-```
-
-For development, using dotenv is recommended so you can load `alerter.env` across shells.
-
-Install dotenv CLI in your active virtual environment:
-
-```bash
-pip install "python-dotenv[cli]"
-```
-
-Run alerter with values from `alerter.env`:
-
-```bash
-dotenv -f ./alerter.env run -- python alerter.py --db ./data.db --poll-interval 5
 ```
 
 ## Run as systemd Services (Linux / Raspberry Pi)
@@ -163,7 +145,6 @@ The shipped units assume:
 - user: `admin`
 - working directory: `/home/admin/airqmon/backend`
 - python binary: `/home/admin/airqmon/backend/venv/bin/python`
-- alerter environment file: `/home/admin/airqmon/backend/alerter.env`
 
 If your setup differs, edit both service files first.
 
@@ -177,14 +158,6 @@ sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
 sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
 sudo systemctl daemon-reload
 ```
-
-Create the alerter env file from the sample:
-
-```bash
-cp /home/admin/airqmon/backend/alerter.env.example /home/admin/airqmon/backend/alerter.env
-```
-
-Then edit `/home/admin/airqmon/backend/alerter.env` if needed (for example thresholds).
 
 Start and enable services:
 
@@ -223,3 +196,4 @@ sudo journalctl -u airqmon-alerter -f
   - verify service `User=` exists and owns project files
 - Port conflicts on `8000`:
   - change port in `airqmon-web.service` `ExecStart`
+
