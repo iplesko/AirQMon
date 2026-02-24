@@ -172,6 +172,10 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     }
   }
 
+  const handleLogout = () => {
+    window.location.assign('/cdn-cgi/access/logout')
+  }
+
   if (!open) {
     return null
   }
@@ -257,10 +261,15 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
             </div>
 
             <div className="config-actions">
-              <button className="btn" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
+              <button className="btn danger" onClick={handleLogout}>
+                Log out
               </button>
-              {saveStatus ? <div className="config-copy-status">{saveStatus}</div> : null}
+              <div className="config-actions-right">
+                {saveStatus ? <div className="config-copy-status">{saveStatus}</div> : null}
+                <button className="btn" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}

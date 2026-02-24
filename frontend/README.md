@@ -5,6 +5,11 @@
 The frontend is a React + Vite single-page application written in TypeScript.
 It fetches measurements from the backend API (`/api/latest` and `/api/data`) and visualizes them with Chart.js.
 
+## Access Control Assumption
+
+This frontend is expected to be deployed behind Cloudflare Access (Zero Trust) protection.
+The Config modal logout button intentionally redirects to `/cdn-cgi/access/logout` to end the Cloudflare Access session and force re-authentication.
+
 ## Build
 
 ```bash
