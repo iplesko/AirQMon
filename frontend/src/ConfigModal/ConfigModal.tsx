@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import type { AppConfig } from '../types'
 import NotificationsControl from './NotificationsControl'
 import './ConfigModal.css'
@@ -143,12 +144,18 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     window.location.assign('/cdn-cgi/access/logout')
   }
 
+  const handleBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose()
+    }
+  }
+
   if (!open) {
     return null
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onMouseDown={handleBackdropMouseDown}>
       <div className="modal-card" role="dialog" aria-modal="true" aria-label="Configuration" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Configuration</h2>
