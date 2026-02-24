@@ -47,3 +47,23 @@ npm run dev
 ## API Proxy
 
 The frontend is configured to proxy `/api` to `http://localhost:8000` during development (see `vite.config.ts`).
+
+## PWA
+
+The frontend is now configured as a baseline Progressive Web App:
+
+- `public/manifest.webmanifest` defines install metadata.
+- `public/service-worker.js` provides basic app-shell and runtime caching.
+- `src/main.tsx` registers the service worker in production builds.
+
+To test installability:
+
+```bash
+cd frontend
+npm run build
+npm run preview
+```
+
+Then open the preview URL from your phone (same network) and use browser "Add to Home Screen".
+
+Production note: PWA install/service worker requires HTTPS in normal browser contexts.

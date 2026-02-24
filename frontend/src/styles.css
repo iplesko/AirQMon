@@ -59,11 +59,8 @@ body,
   width: 44px;
   height: 44px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), #7c3aed);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
+  object-fit: cover;
+  display: block;
 }
 
 .title {

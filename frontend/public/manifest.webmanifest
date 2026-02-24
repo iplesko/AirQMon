@@ -1,0 +1,19 @@
+{
+  "name": "AirQMon",
+  "short_name": "AirQMon",
+  "description": "Air quality monitoring dashboard",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e1e30",
+  "theme_color": "#0e1e30",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
