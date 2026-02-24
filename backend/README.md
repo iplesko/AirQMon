@@ -57,12 +57,6 @@ CLI options (selected):
 - `--co2-high`: high alert threshold in ppm (default: `1500`), env: `ALERTER_CO2_HIGH`
 - `--co2-clear`: recovery threshold in ppm (default: `500`), env: `ALERTER_CO2_CLEAR`
 - `--cooldown-seconds`: minimum time between new high-alert starts (default: `1800`), env: `ALERTER_COOLDOWN_SECONDS`
-- `--repeat-seconds`: optional repeat reminder interval while still high (default: `0`, disabled), env: `ALERTER_REPEAT_SECONDS`
-- `--ntfy-url`: ntfy server base URL (default: `https://ntfy.sh`), env: `NTFY_URL`
-- `--ntfy-topic`: ntfy topic name (required if no env), env: `NTFY_TOPIC`
-- `--ntfy-token`: optional bearer token for protected topics, env: `NTFY_TOKEN`
-- `--ntfy-priority-high`: high-alert priority header (default: `4`), env: `NTFY_PRIORITY_HIGH`
-- `--ntfy-priority-clear`: recovery-alert priority header (default: `3`), env: `NTFY_PRIORITY_CLEAR`
 
 ## Requirements
 
@@ -119,13 +113,12 @@ In a third terminal:
 ```bash
 cd backend
 source venv/bin/activate
-NTFY_TOPIC=your-topic-name python alerter.py
+python alerter.py
 ```
 
 Optional custom settings:
 
 ```bash
-NTFY_TOPIC=your-topic-name \
 ALERTER_CO2_HIGH=1500 \
 ALERTER_CO2_CLEAR=500 \
 ALERTER_COOLDOWN_SECONDS=1800 \
@@ -191,9 +184,7 @@ Create the alerter env file from the sample:
 cp /home/admin/airqmon/backend/alerter.env.example /home/admin/airqmon/backend/alerter.env
 ```
 
-Then edit `/home/admin/airqmon/backend/alerter.env` and set at least:
-
-- `NTFY_TOPIC`
+Then edit `/home/admin/airqmon/backend/alerter.env` if needed (for example thresholds).
 
 Start and enable services:
 

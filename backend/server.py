@@ -5,7 +5,7 @@ from typing import Optional
 import os
 import time
 
-from db import get_conn, init_db, latest, range_query
+from db import get_conn, get_state, init_db, latest, range_query
 
 APP = app = FastAPI()
 DEFAULT_POINTS = 500
@@ -45,6 +45,13 @@ def api_data(
     rows = range_query(conn, int(start), int(end))
     rows = sieve_evenly(rows, points)
     return {'data': rows}
+
+
+@app.get('/api/config')
+def api_config():
+    return {
+        'ntfy_topic': get_state(conn, 'alert:ntfy_topic'),
+    }
 
 
 def sieve_evenly(rows, target_points: int):

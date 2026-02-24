@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Brand from './Brand'
 import CurrentReading from './CurrentReading'
+import ConfigModal from './ConfigModal/ConfigModal'
 import MeasurementChart from './MeasurementChart'
 import RangeControls from './RangeControls'
 import ThemeToggle, { getInitialDarkMode } from './ThemeToggle'
@@ -47,6 +48,7 @@ export default function App() {
   const [dark, setDark] = useState<boolean>(getInitialDarkMode)
   const [rangeSeconds, setRangeSeconds] = useState<number>(DEFAULT_RANGE_SECONDS)
   const [useLimitedPoints, setUseLimitedPoints] = useState<boolean>(getInitialUseLimitedPoints)
+  const [configOpen, setConfigOpen] = useState(false)
   const lastFetchTsRef = useRef<number | null>(null)
 
   const fetchLatest = useCallback(async () => {
@@ -137,6 +139,9 @@ export default function App() {
       <div className="header">
         <Brand />
         <div className="controls">
+          <button className="btn" onClick={() => setConfigOpen(true)}>
+            Config
+          </button>
           <RangeControls rangeSeconds={rangeSeconds} onSelectRange={setRangeSeconds} />
           <ThemeToggle dark={dark} onToggle={() => setDark((value) => !value)} />
         </div>
@@ -148,6 +153,9 @@ export default function App() {
           <MeasurementChart data={data} dark={dark} />
         </div>
       </div>
+
+      <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
   )
 }
+

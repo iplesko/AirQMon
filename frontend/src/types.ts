@@ -5,3 +5,7 @@ export type Measurement = {
   temperature: number
   humidity: number
 }
+
+export type AppConfig = {
+  ntfy_topic: string | null
+}
