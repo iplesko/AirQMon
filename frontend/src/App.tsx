@@ -3,11 +3,10 @@ import Brand from './Brand'
 import CurrentReading from './CurrentReading'
 import ConfigModal from './ConfigModal/ConfigModal'
 import MeasurementChart from './MeasurementChart'
-import RangeControls from './RangeControls'
+import RangeControls, { getInitialRangeSeconds } from './RangeControls'
 import ThemeToggle, { getInitialDarkMode } from './ThemeToggle'
 import type { Measurement } from './types'
 
-const DEFAULT_RANGE_SECONDS = 24 * 3600
 const POLL_INTERVAL_MS = 5000
 const MOBILE_BREAKPOINT = 768
 const MOBILE_PORTRAIT_POINTS = 100
@@ -46,7 +45,7 @@ export default function App() {
   const [data, setData] = useState<Measurement[]>([])
   const [latest, setLatest] = useState<Measurement | null>(null)
   const [dark, setDark] = useState<boolean>(getInitialDarkMode)
-  const [rangeSeconds, setRangeSeconds] = useState<number>(DEFAULT_RANGE_SECONDS)
+  const [rangeSeconds, setRangeSeconds] = useState<number>(getInitialRangeSeconds)
   const [useLimitedPoints, setUseLimitedPoints] = useState<boolean>(getInitialUseLimitedPoints)
   const [configOpen, setConfigOpen] = useState(false)
   const lastFetchTsRef = useRef<number | null>(null)
@@ -133,6 +132,7 @@ export default function App() {
       window.removeEventListener('orientationchange', updateViewportMode)
     }
   }, [])
+
 
   return (
     <div className="app">
