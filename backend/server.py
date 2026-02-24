@@ -1,12 +1,23 @@
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
+import base64
 import os
 import time
 
-from db import get_conn, get_state, init_db, latest, range_query, set_state
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_public_key
+
+from db import (
+    delete_push_subscription,
+    get_conn,
+    get_state,
+    init_db,
+    latest,
+    range_query,
+    set_state,
+    upsert_push_subscription,
+)
 
 APP = app = FastAPI()
 DEFAULT_POINTS = 500
@@ -40,10 +51,41 @@ def read_alert_config():
 
 
 class ConfigPatchRequest(BaseModel):
-    ntfy_topic: str
     co2_high: int
     co2_clear: int
     cooldown_seconds: int
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionRequest(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+def get_vapid_public_key() -> str:
+    key_file = os.getenv('AIRQMON_VAPID_PUBLIC_KEY_FILE', '').strip()
+    if not key_file:
+        raise HTTPException(status_code=503, detail='AIRQMON_VAPID_PUBLIC_KEY_FILE is not configured')
+    if not os.path.isfile(key_file):
+        raise HTTPException(status_code=503, detail='VAPID public key file not found')
+
+    with open(key_file, 'rb') as f:
+        pem = f.read()
+
+    public_key = load_pem_public_key(pem)
+    public_bytes = public_key.public_bytes(
+        encoding=Encoding.X962,
+        format=PublicFormat.UncompressedPoint,
+    )
+    return base64.urlsafe_b64encode(public_bytes).rstrip(b'=').decode('ascii')
 
 
 @app.get('/api/latest')
@@ -78,7 +120,6 @@ def api_data(
 def api_config():
     alert_config = read_alert_config()
     return {
-        'ntfy_topic': get_state(conn, 'alert:ntfy_topic'),
         'co2_high': alert_config['co2_high'],
         'co2_clear': alert_config['co2_clear'],
         'cooldown_seconds': alert_config['cooldown_seconds'],
@@ -87,26 +128,51 @@ def api_config():
 
 @app.put('/api/config')
 def api_put_config(payload: ConfigPatchRequest):
-    topic = payload.ntfy_topic.strip()
-    if not topic:
-        raise HTTPException(status_code=400, detail='ntfy_topic must not be empty')
     if payload.co2_clear >= payload.co2_high:
         raise HTTPException(status_code=400, detail='co2_clear must be lower than co2_high')
     if payload.cooldown_seconds < 0:
         raise HTTPException(status_code=400, detail='cooldown_seconds must be >= 0')
 
-    set_state(conn, 'alert:ntfy_topic', topic)
     set_state(conn, 'alert:co2_high', str(payload.co2_high))
     set_state(conn, 'alert:co2_clear', str(payload.co2_clear))
     set_state(conn, 'alert:cooldown_seconds', str(payload.cooldown_seconds))
 
     alert_config = read_alert_config()
     return {
-        'ntfy_topic': topic,
         'co2_high': alert_config['co2_high'],
         'co2_clear': alert_config['co2_clear'],
         'cooldown_seconds': alert_config['cooldown_seconds'],
     }
+
+
+@app.get('/api/push/public-key')
+def api_push_public_key():
+    return {'public_key': get_vapid_public_key()}
+
+
+@app.post('/api/push/subscribe')
+def api_push_subscribe(payload: PushSubscriptionRequest):
+    endpoint = payload.endpoint.strip()
+    p256dh = payload.keys.p256dh.strip()
+    auth = payload.keys.auth.strip()
+
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(status_code=400, detail='endpoint and keys must not be empty')
+    if not endpoint.startswith('https://'):
+        raise HTTPException(status_code=400, detail='endpoint must use https')
+
+    upsert_push_subscription(conn, endpoint, p256dh, auth)
+    return {'ok': True}
+
+
+@app.post('/api/push/unsubscribe')
+def api_push_unsubscribe(payload: PushUnsubscribeRequest):
+    endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail='endpoint must not be empty')
+
+    deleted = delete_push_subscription(conn, endpoint)
+    return {'ok': True, 'deleted': deleted > 0}
 
 
 def sieve_evenly(rows, target_points: int):

@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=admin
 WorkingDirectory=/home/admin/airqmon/backend
+EnvironmentFile=/home/admin/airqmon/backend/.env
 ExecStart=/home/admin/airqmon/backend/venv/bin/python /home/admin/airqmon/backend/alerter.py --db /home/admin/airqmon/backend/data.db --poll-interval 5
 Restart=on-failure
 

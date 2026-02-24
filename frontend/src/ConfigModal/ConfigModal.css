@@ -106,6 +106,14 @@
   color: var(--success);
 }
 
+.config-copy-status-danger {
+  color: #ff7b72;
+}
+
+.config-copy-status-info {
+  color: var(--muted);
+}
+
 .modal-error {
   color: #ff7b72;
 }

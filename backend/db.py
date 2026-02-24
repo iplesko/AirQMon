@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS kv_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_ts INTEGER NOT NULL,
+    updated_ts INTEGER NOT NULL
+);
 '''
 
 def get_conn(path: str) -> sqlite3.Connection:
@@ -77,3 +84,38 @@ def set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
         (key, value),
     )
     conn.commit()
+
+
+def upsert_push_subscription(conn: sqlite3.Connection, endpoint: str, p256dh: str, auth: str) -> None:
+    now = int(time.time())
+    conn.execute(
+        '''
+        INSERT INTO push_subscriptions(endpoint, p256dh, auth, created_ts, updated_ts)
+        VALUES(?, ?, ?, ?, ?)
+        ON CONFLICT(endpoint) DO UPDATE SET
+            p256dh = excluded.p256dh,
+            auth = excluded.auth,
+            updated_ts = excluded.updated_ts
+        ''',
+        (endpoint, p256dh, auth, now, now),
+    )
+    conn.commit()
+
+
+def delete_push_subscription(conn: sqlite3.Connection, endpoint: str) -> int:
+    cur = conn.cursor()
+    cur.execute('DELETE FROM push_subscriptions WHERE endpoint = ?', (endpoint,))
+    conn.commit()
+    return cur.rowcount
+
+
+def list_push_subscriptions(conn: sqlite3.Connection) -> List[Dict]:
+    cur = conn.cursor()
+    rows = cur.execute(
+        '''
+        SELECT endpoint, p256dh, auth, created_ts, updated_ts
+        FROM push_subscriptions
+        ORDER BY updated_ts DESC
+        '''
+    ).fetchall()
+    return [dict(r) for r in rows]

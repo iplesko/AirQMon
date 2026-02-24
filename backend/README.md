@@ -6,7 +6,7 @@ The backend has two processes:
 
 - `collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
 - `server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
-- `alerter.py`: watches new measurements in SQLite and sends ntfy alerts when CO2 is high.
+- `alerter.py`: watches new measurements in SQLite and sends Web Push alerts (VAPID) when CO2 is high.
 
 Tested hardware setup:
 
@@ -37,8 +37,11 @@ Endpoints:
   - `start`/`end` are optional UNIX timestamps.
   - Defaults to the last 24 hours when omitted.
   - `points` defaults to `500`, max `10000`, and downsamples evenly.
-- `GET /api/config`: returns alert config (`ntfy_topic`, `co2_high`, `co2_clear`, `cooldown_seconds`).
-- `PUT /api/config`: replaces alert config values (`ntfy_topic`, `co2_high`, `co2_clear`, `cooldown_seconds`).
+- `GET /api/config`: returns alert config (`co2_high`, `co2_clear`, `cooldown_seconds`).
+- `PUT /api/config`: replaces alert config values (`co2_high`, `co2_clear`, `cooldown_seconds`).
+- `GET /api/push/public-key`: returns configured VAPID public key for browser subscription.
+- `POST /api/push/subscribe`: upserts browser push subscription (`endpoint`, `keys.p256dh`, `keys.auth`).
+- `POST /api/push/unsubscribe`: removes a stored browser subscription by endpoint.
 
 Static serving:
 
@@ -48,7 +51,7 @@ Static serving:
 ### Alert Worker (`alerter.py`)
 
 - Polls the same SQLite DB for newly inserted measurements.
-- Sends ntfy notifications when CO2 crosses a high threshold.
+- Sends Web Push notifications when CO2 crosses a high threshold.
 - Sends a recovery notification when CO2 returns below a clear threshold.
 - Persists alert state (`last_seen_id`, `in_alert`, `last_alert_ts`) in DB, so restarts do not spam.
 
@@ -68,6 +71,35 @@ Install Python dependencies from `requirements.txt`:
 - `fastapi`
 - `uvicorn`
 - `scd4x`
+- `pywebpush`
+
+Set VAPID environment variables before running `alerter.py` and `server.py`:
+
+- `AIRQMON_VAPID_PUBLIC_KEY_FILE`
+- `AIRQMON_VAPID_PRIVATE_KEY_FILE`
+- `AIRQMON_VAPID_SUBJECT` (recommended format: `mailto:you@example.com`)
+
+Use the sample env file:
+
+```bash
+cd backend
+cp .env.sample .env
+```
+
+Then edit `.env` and set real values for all `AIRQMON_VAPID_*` variables.
+
+### Generate VAPID Keys on Debian / Raspberry Pi
+
+From `backend/`:
+
+```bash
+source venv/bin/activate
+vapid --gen
+```
+
+This creates `private_key.pem` and `public_key.pem` in the current directory.
+
+Then set file paths in `.env`:
 
 ## Setup
 
@@ -147,6 +179,7 @@ The shipped units assume:
 - python binary: `/home/admin/airqmon/backend/venv/bin/python`
 
 If your setup differs, edit both service files first.
+Both web and alerter services load environment variables from `/home/admin/airqmon/backend/.env`.
 
 ### 3. Install and start services
 
@@ -157,6 +190,13 @@ sudo cp backend/airqmon-collector.service /etc/systemd/system/airqmon-collector.
 sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
 sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
 sudo systemctl daemon-reload
+```
+
+Also copy your env file:
+
+```bash
+cp backend/.env.sample backend/.env
+# edit backend/.env and set real VAPID values
 ```
 
 Start and enable services:

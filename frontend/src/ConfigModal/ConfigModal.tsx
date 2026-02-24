@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppConfig } from '../types'
+import NotificationsControl from './NotificationsControl'
 import './ConfigModal.css'
 
 type ConfigModalProps = {
@@ -7,49 +8,35 @@ type ConfigModalProps = {
   onClose: () => void
 }
 
-type ConfigForm = Record<keyof AppConfig, string>
+type ConfigForm = {
+  co2_high: string
+  co2_clear: string
+  cooldown_seconds: string
+}
 
 function configToForm(config: AppConfig): ConfigForm {
   return {
-    ntfy_topic: config.ntfy_topic ?? '',
     co2_high: String(config.co2_high),
     co2_clear: String(config.co2_clear),
     cooldown_seconds: String(config.cooldown_seconds),
   }
 }
 
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
+async function getApiErrorMessage(response: Response): Promise<string> {
+  const payload = (await response.json().catch(() => null)) as { detail?: string } | null
+  return payload?.detail ?? `Request failed (${response.status})`
+}
 
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.top = '-9999px'
-  textarea.style.left = '-9999px'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-
-  if (!copied) {
-    throw new Error('Copy command failed')
-  }
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
 }
 
 export default function ConfigModal({ open, onClose }: ConfigModalProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
-  const [copyStatus, setCopyStatus] = useState<string | null>(null)
   const [form, setForm] = useState<ConfigForm>({
-    ntfy_topic: '',
     co2_high: '',
     co2_clear: '',
     cooldown_seconds: '',
@@ -60,23 +47,22 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
 
     let canceled = false
 
-    const fetchConfig = async () => {
+    const loadConfig = async () => {
       setLoading(true)
-      setError(null)
+      setErrorMessage(null)
       setSaveStatus(null)
-      setCopyStatus(null)
       try {
         const res = await fetch('/api/config')
         if (!res.ok) {
-          throw new Error(`Request failed (${res.status})`)
+          throw new Error(await getApiErrorMessage(res))
         }
         const payload = (await res.json()) as AppConfig
         if (!canceled) {
           setForm(configToForm(payload))
         }
-      } catch (e) {
+      } catch (error) {
         if (!canceled) {
-          setError(e instanceof Error ? e.message : 'Failed to load config')
+          setErrorMessage(`Failed to load config: ${getErrorMessage(error, 'Unknown error')}`)
         }
       } finally {
         if (!canceled) {
@@ -85,7 +71,7 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
       }
     }
 
-    void fetchConfig()
+    void loadConfig()
 
     return () => {
       canceled = true
@@ -105,68 +91,49 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])
 
-  const topic = form.ntfy_topic.trim()
-
-  const handleCopy = async () => {
-    if (!topic) return
-    try {
-      await copyTextToClipboard(topic)
-      setCopyStatus('Copied')
-    } catch {
-      setCopyStatus('Copy failed')
-    }
-  }
-
   const handleSave = async () => {
-    const ntfyTopic = form.ntfy_topic.trim()
     const co2High = Number(form.co2_high)
     const co2Clear = Number(form.co2_clear)
     const cooldownSeconds = Number(form.cooldown_seconds)
 
-    if (!ntfyTopic) {
-      setError('Topic must not be empty')
-      return
-    }
     if (!Number.isFinite(co2High) || !Number.isFinite(co2Clear) || !Number.isFinite(cooldownSeconds)) {
-      setError('Config values must be numeric')
+      setErrorMessage('Config values must be numeric')
       return
     }
     if (!Number.isInteger(co2High) || !Number.isInteger(co2Clear)) {
-      setError('CO2 high and CO2 clear must be integers')
+      setErrorMessage('CO2 high and CO2 clear must be integers')
       return
     }
     if (!Number.isInteger(cooldownSeconds) || cooldownSeconds < 0) {
-      setError('Cooldown must be a non-negative integer')
+      setErrorMessage('Cooldown must be a non-negative integer')
       return
     }
     if (co2Clear >= co2High) {
-      setError('CO2 clear must be lower than CO2 high')
+      setErrorMessage('CO2 clear must be lower than CO2 high')
       return
     }
 
     setSaving(true)
-    setError(null)
+    setErrorMessage(null)
     setSaveStatus(null)
     try {
       const res = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ntfy_topic: ntfyTopic,
           co2_high: co2High,
           co2_clear: co2Clear,
           cooldown_seconds: cooldownSeconds,
         }),
       })
       if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { detail?: string } | null
-        throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+        throw new Error(await getApiErrorMessage(res))
       }
       const updated = (await res.json()) as AppConfig
       setForm(configToForm(updated))
       setSaveStatus('Saved')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save config')
+    } catch (error) {
+      setErrorMessage(`Failed to save config: ${getErrorMessage(error, 'Unknown error')}`)
     } finally {
       setSaving(false)
     }
@@ -191,29 +158,10 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
         </div>
 
         {loading ? <div className="muted">Loading config...</div> : null}
-        {error ? <div className="modal-error">Failed to load config: {error}</div> : null}
+        {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
 
         {!loading ? (
           <div className="modal-content">
-            <div className="config-row">
-              <label className="config-label" htmlFor="config-ntfy-topic">
-                ntfy topic
-              </label>
-              <div className="config-value-wrap">
-                <input
-                  id="config-ntfy-topic"
-                  className="config-input config-input-topic"
-                  value={form.ntfy_topic}
-                  onChange={(event) => setForm((prev) => ({ ...prev, ntfy_topic: event.target.value }))}
-                />
-                <button className="btn secondary" onClick={handleCopy} disabled={!topic}>
-                  Copy
-                </button>
-              </div>
-              <div className="config-help">ℹ️ Topic name used by <a href="https://ntfy.sh" target="_blank" rel="noopener noreferrer">ntfy.sh</a> for publishing and subscribing to alerts.</div>
-            </div>
-            {copyStatus ? <div className="config-copy-status">{copyStatus}</div> : null}
-
             <div className="config-row">
               <label className="config-label" htmlFor="config-co2-high">
                 CO2 high (ppm)
@@ -259,6 +207,8 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
               />
               <div className="config-help">ℹ️ Minimum seconds between starting one high alert and allowing the next one.</div>
             </div>
+
+            <NotificationsControl />
 
             <div className="config-actions">
               <button className="btn danger" onClick={handleLogout}>

@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
-"""Alert worker: watches DB for new readings and pushes ntfy notifications."""
+"""Alert worker: watches DB for new readings and pushes Web Push notifications."""
 import argparse
 import json
 import os
-import secrets
 import signal
-import string
 import sys
 import time
-import urllib.error
-import urllib.request
-from datetime import datetime
-from typing import Optional
 
-from db import get_conn, get_state, init_db, query_after_id, set_state
+from alert_runtime import (
+    AlertConfig,
+    AlertRuntimeState,
+    ensure_runtime_config,
+    load_runtime_state,
+    persist_runtime_state,
+)
+from db import get_conn, init_db, query_after_id
+from push_notifications import build_high_payload, build_recovery_payload, send_push_to_all
 
 running = True
-NTFY_BASE_URL = 'https://ntfy.sh'
-NTFY_PRIORITY = '3'
 DEFAULT_POLL_INTERVAL = 5.0
-DEFAULT_CO2_HIGH = 1500
-DEFAULT_CO2_CLEAR = 500
-DEFAULT_COOLDOWN_SECONDS = 1800
 
 
 def handle_sig(signum, frame):
@@ -36,91 +33,76 @@ def parse_args():
     return parser.parse_args()
 
 
-def ensure_ntfy_topic(conn) -> str:
-    topic = get_state(conn, 'alert:ntfy_topic')
-    if topic:
-        return topic
-
-    alphabet = string.ascii_lowercase + string.digits
-    random_part = ''.join(secrets.choice(alphabet) for _ in range(12))
-    topic = f'airqmon-{random_part}'
-    set_state(conn, 'alert:ntfy_topic', topic)
-    return topic
-
-
-def bool_from_state(raw: Optional[str], default: bool = False) -> bool:
-    if raw is None:
-        return default
-    return raw.lower() in ('1', 'true', 'yes', 'on')
+def get_vapid_credentials() -> tuple[str, dict]:
+    private_key = os.getenv('AIRQMON_VAPID_PRIVATE_KEY_FILE', '').strip()
+    subject = os.getenv('AIRQMON_VAPID_SUBJECT', '').strip()
+    if not private_key:
+        raise RuntimeError('AIRQMON_VAPID_PRIVATE_KEY_FILE is not configured')
+    if not os.path.isfile(private_key):
+        raise RuntimeError('AIRQMON_VAPID_PRIVATE_KEY_FILE does not point to an existing file')
+    if not subject:
+        raise RuntimeError('AIRQMON_VAPID_SUBJECT is not configured')
+    return private_key, {'sub': subject}
 
 
-def int_from_state(raw: Optional[str], default: int = 0) -> int:
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
+def log_event(event: str, **fields) -> None:
+    print(json.dumps({'event': event, **fields}))
 
 
-def ensure_alert_config(conn) -> tuple[int, int, int]:
-    co2_high_raw = get_state(conn, 'alert:co2_high')
-    co2_clear_raw = get_state(conn, 'alert:co2_clear')
-    cooldown_raw = get_state(conn, 'alert:cooldown_seconds')
-
-    co2_high = int_from_state(co2_high_raw, DEFAULT_CO2_HIGH)
-    co2_clear = int_from_state(co2_clear_raw, DEFAULT_CO2_CLEAR)
-    cooldown_seconds = int_from_state(cooldown_raw, DEFAULT_COOLDOWN_SECONDS)
-
-    if co2_high_raw is None:
-        set_state(conn, 'alert:co2_high', str(co2_high))
-    if co2_clear_raw is None:
-        set_state(conn, 'alert:co2_clear', str(co2_clear))
-    if cooldown_raw is None:
-        set_state(conn, 'alert:cooldown_seconds', str(cooldown_seconds))
-
-    return co2_high, co2_clear, cooldown_seconds
+def should_send_high_alert(ts: int, co2: float, state: AlertRuntimeState, config: AlertConfig) -> bool:
+    if state.in_alert:
+        return False
+    if co2 < config.co2_high:
+        return False
+    return ts - state.last_alert_ts >= config.cooldown_seconds
 
 
-def ensure_runtime_config(conn) -> tuple[str, int, int, int]:
-    ntfy_topic = ensure_ntfy_topic(conn)
-    co2_high, co2_clear, cooldown_seconds = ensure_alert_config(conn)
-    if co2_clear >= co2_high:
-        raise ValueError('Configured co2_clear must be lower than co2_high')
-    return ntfy_topic, co2_high, co2_clear, cooldown_seconds
+def process_row(conn, row: dict, state: AlertRuntimeState, config: AlertConfig, vapid_private_key: str, vapid_claims: dict) -> None:
+    state.last_seen_id = row['id']
+    ts = int(row['ts'])
+    co2 = float(row['co2'])
 
+    if should_send_high_alert(ts, co2, state, config):
+        payload = build_high_payload(row, config.co2_high)
+        stats = send_push_to_all(conn, payload, vapid_private_key, vapid_claims)
+        if stats.sent > 0:
+            state.in_alert = True
+            state.last_alert_ts = ts
+            log_event(
+                'alert_sent',
+                id=row['id'],
+                co2=co2,
+                ts=ts,
+                push_sent=stats.sent,
+                push_attempted=stats.attempted,
+                subscriptions_removed=stats.removed,
+            )
+        else:
+            log_event(
+                'alert_not_sent',
+                id=row['id'],
+                co2=co2,
+                ts=ts,
+                push_sent=stats.sent,
+                push_attempted=stats.attempted,
+                subscriptions_removed=stats.removed,
+            )
 
-def send_ntfy(base_url: str, topic: str, body: str, title: str, priority: str, tags: str) -> None:
-    url = f"{base_url.rstrip('/')}/{topic}"
-    req = urllib.request.Request(url=url, data=body.encode('utf-8'), method='POST')
-    req.add_header('Title', title)
-    req.add_header('Priority', priority)
-    req.add_header('Tags', tags)
-    req.add_header('Content-Type', 'text/plain; charset=utf-8')
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        resp.read()
-
-
-def send_alert(base_url: str, topic: str, reading: dict, high: int) -> None:
-    body = (
-        f"CO2 is high: {reading['co2']:.0f} ppm\n"
-        f"Threshold: {high:.0f} ppm\n"
-        f"Temp: {reading['temperature']:.1f} C\n"
-        f"Humidity: {reading['humidity']:.1f}%\n"
-        f"At: {datetime.fromtimestamp(reading['ts']).isoformat()}"
-    )
-    send_ntfy(base_url, topic, body, 'AirQMon: High CO2', NTFY_PRIORITY, 'warning,wind_face')
-
-
-def send_recovery(base_url: str, topic: str, reading: dict, clear: int) -> None:
-    body = (
-        f"CO2 back to normal: {reading['co2']:.0f} ppm\n"
-        f"Clear threshold: {clear:.0f} ppm\n"
-        f"Temp: {reading['temperature']:.1f} C\n"
-        f"Humidity: {reading['humidity']:.1f}%\n"
-        f"At: {datetime.fromtimestamp(reading['ts']).isoformat()}"
-    )
-    send_ntfy(base_url, topic, body, 'AirQMon: CO2 Normalized', NTFY_PRIORITY, 'white_check_mark,wind_face')
+    if state.in_alert and co2 <= config.co2_clear:
+        payload = build_recovery_payload(row, config.co2_clear)
+        stats = send_push_to_all(conn, payload, vapid_private_key, vapid_claims)
+        if stats.sent > 0 or not stats.has_remaining_recipients:
+            state.in_alert = False
+        log_event(
+            'recovery_sent',
+            id=row['id'],
+            co2=co2,
+            ts=ts,
+            push_sent=stats.sent,
+            push_attempted=stats.attempted,
+            subscriptions_removed=stats.removed,
+            in_alert_after=state.in_alert,
+        )
 
 
 def main():
@@ -129,94 +111,53 @@ def main():
     conn = get_conn(args.db)
     init_db(conn)
     try:
-        ntfy_topic, co2_high, co2_clear, cooldown_seconds = ensure_runtime_config(conn)
+        config = ensure_runtime_config(conn)
+        vapid_private_key, vapid_claims = get_vapid_credentials()
     except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(2)
+    except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(2)
 
     signal.signal(signal.SIGINT, handle_sig)
     signal.signal(signal.SIGTERM, handle_sig)
 
-    last_id = int_from_state(get_state(conn, 'alert:last_seen_id'), 0)
-    in_alert = bool_from_state(get_state(conn, 'alert:in_alert'), False)
-    last_alert_ts = int_from_state(get_state(conn, 'alert:last_alert_ts'), 0)
+    state = load_runtime_state(conn)
 
-    print(
-        json.dumps(
-            {
-                'event': 'alerter_started',
-                'db': args.db,
-                'poll_interval': args.poll_interval,
-                'co2_high': co2_high,
-                'co2_clear': co2_clear,
-                'cooldown_seconds': cooldown_seconds,
-                'ntfy_url': NTFY_BASE_URL,
-                'ntfy_topic': ntfy_topic,
-            }
-        )
+    log_event(
+        'alerter_started',
+        db=args.db,
+        poll_interval=args.poll_interval,
+        co2_high=config.co2_high,
+        co2_clear=config.co2_clear,
+        cooldown_seconds=config.cooldown_seconds,
     )
     print(
         'Using config:\n'
-        f'  ntfy_topic={ntfy_topic}\n'
-        f'  co2_high={co2_high}\n'
-        f'  co2_clear={co2_clear}\n'
-        f'  cooldown_seconds={cooldown_seconds}'
+        f'  co2_high={config.co2_high}\n'
+        f'  co2_clear={config.co2_clear}\n'
+        f'  cooldown_seconds={config.cooldown_seconds}'
     )
 
     try:
         while running:
             try:
-                ntfy_topic, co2_high, co2_clear, cooldown_seconds = ensure_runtime_config(conn)
+                config = ensure_runtime_config(conn)
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 time.sleep(args.poll_interval)
                 continue
 
-            rows = query_after_id(conn, last_id)
+            rows = query_after_id(conn, state.last_seen_id)
             if not rows:
                 time.sleep(args.poll_interval)
                 continue
 
             for row in rows:
-                last_id = row['id']
-                ts = int(row['ts'])
-                co2 = float(row['co2'])
+                process_row(conn, row, state, config, vapid_private_key, vapid_claims)
 
-                should_send_high = False
-                if not in_alert and co2 >= co2_high:
-                    if ts - last_alert_ts >= cooldown_seconds:
-                        should_send_high = True
-
-                if should_send_high:
-                    try:
-                        send_alert(
-                            NTFY_BASE_URL,
-                            ntfy_topic,
-                            row,
-                            co2_high,
-                        )
-                        in_alert = True
-                        last_alert_ts = ts
-                        print(json.dumps({'event': 'alert_sent', 'id': row['id'], 'co2': co2, 'ts': ts}))
-                    except urllib.error.URLError as exc:
-                        print(f'Failed to send ntfy alert: {exc}', file=sys.stderr)
-
-                if in_alert and co2 <= co2_clear:
-                    try:
-                        send_recovery(
-                            NTFY_BASE_URL,
-                            ntfy_topic,
-                            row,
-                            co2_clear,
-                        )
-                        in_alert = False
-                        print(json.dumps({'event': 'recovery_sent', 'id': row['id'], 'co2': co2, 'ts': ts}))
-                    except urllib.error.URLError as exc:
-                        print(f'Failed to send ntfy recovery: {exc}', file=sys.stderr)
-
-            set_state(conn, 'alert:last_seen_id', str(last_id))
-            set_state(conn, 'alert:in_alert', '1' if in_alert else '0')
-            set_state(conn, 'alert:last_alert_ts', str(last_alert_ts))
+            persist_runtime_state(conn, state)
     finally:
         conn.close()
         print('Alerter stopped')

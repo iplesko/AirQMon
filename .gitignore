@@ -3,6 +3,9 @@
 backend/__pycache__/
 backend/data.db
 backend/alerter.env
+backend/.env
+backend/private_key.pem
+backend/public_key.pem
 
 frontend/node_modules/
 frontend/dist/

@@ -24,7 +24,7 @@ The backend contains two runtime pieces:
 
 - `alerter.py`
   - Watches newly inserted measurements in SQLite.
-  - Sends ntfy notifications when CO2 is above a configurable threshold.
+  - Sends Web Push notifications (VAPID) when CO2 is above a configurable threshold.
   - Sends a recovery notification when CO2 falls below clear threshold.
   - Persists alert state in DB so restarts avoid duplicate alerts.
 
