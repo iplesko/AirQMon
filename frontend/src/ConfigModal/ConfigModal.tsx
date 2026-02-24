@@ -131,7 +131,7 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
       }
       const updated = (await res.json()) as AppConfig
       setForm(configToForm(updated))
-      setSaveStatus('Saved')
+      onClose()
     } catch (error) {
       setErrorMessage(`Failed to save config: ${getErrorMessage(error, 'Unknown error')}`)
     } finally {
