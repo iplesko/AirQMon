@@ -49,6 +49,17 @@ def log_event(event: str, **fields) -> None:
     print(json.dumps({'event': event, **fields}))
 
 
+def stats_log_fields(row: dict, stats) -> dict:
+    return {
+        'id': row['id'],
+        'co2': float(row['co2']),
+        'ts': int(row['ts']),
+        'push_sent': stats.sent,
+        'push_attempted': stats.attempted,
+        'subscriptions_removed': stats.removed,
+    }
+
+
 def should_send_high_alert(ts: int, co2: float, state: AlertRuntimeState, config: AlertConfig) -> bool:
     if state.in_alert:
         return False
@@ -68,25 +79,9 @@ def process_row(conn, row: dict, state: AlertRuntimeState, config: AlertConfig, 
         if stats.sent > 0:
             state.in_alert = True
             state.last_alert_ts = ts
-            log_event(
-                'alert_sent',
-                id=row['id'],
-                co2=co2,
-                ts=ts,
-                push_sent=stats.sent,
-                push_attempted=stats.attempted,
-                subscriptions_removed=stats.removed,
-            )
+            log_event('alert_sent', **stats_log_fields(row, stats))
         else:
-            log_event(
-                'alert_not_sent',
-                id=row['id'],
-                co2=co2,
-                ts=ts,
-                push_sent=stats.sent,
-                push_attempted=stats.attempted,
-                subscriptions_removed=stats.removed,
-            )
+            log_event('alert_not_sent', **stats_log_fields(row, stats))
 
     if state.in_alert and co2 <= config.co2_clear:
         payload = build_recovery_payload(row, config.co2_clear)
@@ -95,12 +90,7 @@ def process_row(conn, row: dict, state: AlertRuntimeState, config: AlertConfig, 
             state.in_alert = False
         log_event(
             'recovery_sent',
-            id=row['id'],
-            co2=co2,
-            ts=ts,
-            push_sent=stats.sent,
-            push_attempted=stats.attempted,
-            subscriptions_removed=stats.removed,
+            **stats_log_fields(row, stats),
             in_alert_after=state.in_alert,
         )
 
