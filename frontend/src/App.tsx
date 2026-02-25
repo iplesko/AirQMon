@@ -70,9 +70,9 @@ export default function App() {
       try {
         const end = Math.floor(Date.now() / 1000)
         const windowStart = end - rangeSeconds
-        const shouldForceFull = forceFull || useLimitedPoints
         const previousTs = lastFetchTsRef.current
-        const start = shouldForceFull || previousTs === null ? windowStart : Math.max(previousTs + 1, windowStart)
+        const shouldForceFull = forceFull || previousTs === null
+        const start = shouldForceFull ? windowStart : Math.max(previousTs + 1, windowStart)
         const query = new URLSearchParams({ start: String(start), end: String(end) })
         if (useLimitedPoints) {
           query.set('points', String(MOBILE_PORTRAIT_POINTS))
