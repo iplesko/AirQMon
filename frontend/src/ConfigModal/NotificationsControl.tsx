@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { registerAirqmonServiceWorker } from '../serviceWorker'
 
 type NotificationMode = 'enabled' | 'disabled' | 'unsupported'
 type NotificationAction = 'enable' | 'disable' | null
@@ -114,10 +115,7 @@ export default function NotificationsControl() {
         return
       }
 
-      let registration = await navigator.serviceWorker.getRegistration()
-      if (!registration) {
-        registration = await navigator.serviceWorker.register('/service-worker.js')
-      }
+      const registration = await registerAirqmonServiceWorker()
 
       const keyResponse = await fetch('/api/push/public-key')
       if (!keyResponse.ok) {
