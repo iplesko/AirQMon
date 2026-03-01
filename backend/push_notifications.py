@@ -71,6 +71,9 @@ def send_push_to_all(conn, payload: str, vapid_private_key: str, vapid_claims: d
                 data=payload,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=vapid_claims,
+                headers={
+                    'Urgency': 'high',
+                },
                 ttl=3600,
             )
             sent += 1
