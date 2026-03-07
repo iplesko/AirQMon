@@ -66,13 +66,6 @@ CLI options (selected):
 - `pip`
 - Linux systemd (only if running as services)
 
-Install Python dependencies from `requirements.txt`:
-
-- `fastapi`
-- `uvicorn`
-- `scd4x`
-- `pywebpush`
-
 Set VAPID environment variables before running `alerter.py` and `server.py`:
 
 - `AIRQMON_VAPID_PUBLIC_KEY_FILE`
@@ -107,6 +100,30 @@ From `backend/`:
 
 ```bash
 python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Display Setup (Waveshare 2.4" SPI)
+
+On Raspberry Pi, install required system packages:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential python3-dev fontconfig fonts-dejavu-core
+```
+
+Enable SPI in firmware config (required for `/dev/spidev0.0`):
+
+```bash
+CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
+grep -q '^dtparam=spi=on' "$CFG" || echo 'dtparam=spi=on' | sudo tee -a "$CFG"
+sudo reboot
+```
+
+Then install Python dependencies from `backend/`:
+
+```bash
 source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -160,6 +177,7 @@ The repository includes:
 - `airqmon-collector.service`
 - `airqmon-web.service`
 - `airqmon-alerter.service`
+- `airqmon-display.service`
 
 ### 1. Prepare environment
 
@@ -189,6 +207,7 @@ From repository root:
 sudo cp backend/airqmon-collector.service /etc/systemd/system/airqmon-collector.service
 sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
 sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
+sudo cp backend/airqmon-display.service /etc/systemd/system/airqmon-display.service
 sudo systemctl daemon-reload
 ```
 
@@ -205,6 +224,7 @@ Start and enable services:
 sudo systemctl enable --now airqmon-collector.service
 sudo systemctl enable --now airqmon-web.service
 sudo systemctl enable --now airqmon-alerter.service
+sudo systemctl enable --now airqmon-display.service
 ```
 
 ### 4. Verify status and logs
@@ -213,9 +233,11 @@ sudo systemctl enable --now airqmon-alerter.service
 sudo systemctl status airqmon-collector.service
 sudo systemctl status airqmon-web.service
 sudo systemctl status airqmon-alerter.service
+sudo systemctl status airqmon-display.service
 sudo journalctl -u airqmon-collector -f
 sudo journalctl -u airqmon-web -f
 sudo journalctl -u airqmon-alerter -f
+sudo journalctl -u airqmon-display -f
 ```
 
 ## Data Storage

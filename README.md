@@ -9,7 +9,8 @@ Target hardware setup:
 
 - Raspberry Pi Zero 2 W
 - DFRobot SEN0536 (SCD41 infrared CO2 sensor)
-- I2C connection via Raspberry Pi GPIO pins
+- Waveshare 2.4" IPS TFT LCD module (240x320, SPI, 65K RGB, SKU 18366 / ILI9341 controller)
+- Sensor uses I2C GPIO pins; display uses SPI GPIO pins (3.3V logic)
 
 ## What the Applications Do
 
