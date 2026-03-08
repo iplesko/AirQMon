@@ -16,6 +16,7 @@ import type { Measurement } from './types'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
 const MOBILE_BREAKPOINT = 768
+const NARROW_MOBILE_BREAKPOINT = 480
 
 type MeasurementChartProps = {
   data: Measurement[]
@@ -27,10 +28,16 @@ function getInitialIsMobile(): boolean {
   return window.innerWidth <= MOBILE_BREAKPOINT
 }
 
-function getChartOptions(isMobile: boolean, dark: boolean): ChartOptions<'line'> {
+function getInitialIsNarrowMobile(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth <= NARROW_MOBILE_BREAKPOINT
+}
+
+function getChartOptions(isMobile: boolean, isNarrowMobile: boolean, dark: boolean): ChartOptions<'line'> {
   const darkGridColor = 'rgba(148, 163, 184, 0.34)'
   const lightGridColor = 'rgba(85, 96, 112, 0.18)'
   const gridColor = dark ? darkGridColor : lightGridColor
+  const axisTickColor = dark ? 'rgba(230, 238, 248, 0.88)' : 'rgba(11, 27, 43, 0.82)'
 
   return {
     responsive: true,
@@ -51,6 +58,11 @@ function getChartOptions(isMobile: boolean, dark: boolean): ChartOptions<'line'>
         position: 'top',
       },
     },
+    layout: {
+      padding: {
+        right: isMobile ? 6 : 0,
+      },
+    },
     scales: {
       x: {
         grid: {
@@ -67,9 +79,12 @@ function getChartOptions(isMobile: boolean, dark: boolean): ChartOptions<'line'>
         type: 'linear',
         display: true,
         position: 'left',
-        title: { display: true, text: 'CO2 ppm' },
+        title: { display: !isNarrowMobile, text: 'CO2 ppm' },
         grid: {
           color: gridColor,
+        },
+        ticks: {
+          color: axisTickColor,
         },
       },
       y2: {
@@ -77,7 +92,14 @@ function getChartOptions(isMobile: boolean, dark: boolean): ChartOptions<'line'>
         display: true,
         position: 'right',
         title: { display: !isMobile, text: 'Temperature / Humidity' },
-        ticks: { display: !isMobile },
+        ticks: {
+          display: true,
+          color: axisTickColor,
+          font: {
+            size: isMobile ? 10 : 12,
+          },
+          padding: isMobile ? 2 : 4,
+        },
         grid: { drawOnChartArea: false, color: gridColor },
       },
     },
@@ -86,11 +108,13 @@ function getChartOptions(isMobile: boolean, dark: boolean): ChartOptions<'line'>
 
 export default function MeasurementChart({ data, dark }: MeasurementChartProps) {
   const [isMobile, setIsMobile] = useState<boolean>(getInitialIsMobile)
+  const [isNarrowMobile, setIsNarrowMobile] = useState<boolean>(getInitialIsNarrowMobile)
   const chartRef = useRef<any>(null)
 
   useEffect(() => {
     const handler = () => {
       setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT)
+      setIsNarrowMobile(window.innerWidth <= NARROW_MOBILE_BREAKPOINT)
       requestAnimationFrame(() => {
         try {
           chartRef.current?.chartInstance?.resize?.()
@@ -140,7 +164,10 @@ export default function MeasurementChart({ data, dark }: MeasurementChartProps) 
     }
   }, [data])
 
-  const chartOptions = useMemo(() => getChartOptions(isMobile, dark), [isMobile, dark])
+  const chartOptions = useMemo(
+    () => getChartOptions(isMobile, isNarrowMobile, dark),
+    [isMobile, isNarrowMobile, dark]
+  )
 
   return <Line ref={chartRef} data={chartData} options={chartOptions} />
 }
