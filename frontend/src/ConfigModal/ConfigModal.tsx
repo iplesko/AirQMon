@@ -250,7 +250,12 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
 
             <div className="config-row config-row-inline">
               <div className="config-row-inline-main">
-                <div className="config-label">Night mode</div>
+                <div className="config-label">
+                  Night mode -{' '}
+                  <span className={form.night_mode_enabled ? 'config-label-status config-label-status-enabled' : 'config-label-status config-label-status-disabled'}>
+                    {form.night_mode_enabled ? 'enabled' : 'disabled'}
+                  </span>
+                </div>
                 <div className="config-value-wrap">
                   <button
                     className={form.night_mode_enabled ? 'btn secondary' : 'btn'}

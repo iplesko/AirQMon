@@ -54,6 +54,22 @@
   cursor: pointer;
 }
 
+.config-label-status {
+  color: var(--muted);
+}
+
+.config-label-status-enabled {
+  color: var(--success);
+}
+
+.config-label-status-disabled {
+  color: #ff7b72;
+}
+
+.config-label-status-unsupported {
+  color: var(--muted);
+}
+
 .config-value-wrap {
   display: flex;
   align-items: center;

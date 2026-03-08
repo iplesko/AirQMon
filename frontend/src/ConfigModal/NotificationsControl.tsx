@@ -3,12 +3,6 @@ import { registerAirqmonServiceWorker } from '../serviceWorker'
 
 type NotificationMode = 'enabled' | 'disabled' | 'unsupported'
 type NotificationAction = 'enable' | 'disable' | null
-type StatusTone = 'success' | 'danger' | 'info'
-
-type InlineStatus = {
-  message: string
-  tone: StatusTone
-}
 
 function urlBase64ToUint8Array(base64Url: string): Uint8Array {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4)
@@ -36,21 +30,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
-function getStatusClassName(status: InlineStatus): string {
-  if (status.tone === 'danger') {
-    return 'config-copy-status config-copy-status-danger'
-  }
-  if (status.tone === 'info') {
-    return 'config-copy-status config-copy-status-info'
-  }
-  return 'config-copy-status'
-}
-
 export default function NotificationsControl() {
   const [notificationAction, setNotificationAction] = useState<NotificationAction>(null)
   const [notificationMode, setNotificationMode] = useState<NotificationMode>('disabled')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [notificationStatus, setNotificationStatus] = useState<InlineStatus | null>(null)
 
   const notificationsSupported = getNotificationsSupported()
   const notificationsBusy = notificationAction !== null
@@ -59,7 +42,6 @@ export default function NotificationsControl() {
     let canceled = false
 
     const refreshNotificationMode = async () => {
-      setNotificationStatus(null)
       setErrorMessage(null)
 
       if (!notificationsSupported) {
@@ -76,7 +58,6 @@ export default function NotificationsControl() {
 
         if (subscription) {
           setNotificationMode('enabled')
-          setNotificationStatus({ message: 'Notifications enabled', tone: 'success' })
         } else {
           setNotificationMode('disabled')
         }
@@ -96,7 +77,6 @@ export default function NotificationsControl() {
 
   const handleEnableNotifications = async () => {
     setErrorMessage(null)
-    setNotificationStatus(null)
 
     if (!notificationsSupported) {
       setErrorMessage('Notifications are not supported in this browser/context. Use HTTPS (or localhost) and a modern browser.')
@@ -145,7 +125,6 @@ export default function NotificationsControl() {
       }
 
       setNotificationMode('enabled')
-      setNotificationStatus({ message: 'Notifications enabled', tone: 'success' })
     } catch (error) {
       setErrorMessage(`Failed to enable notifications: ${getErrorMessage(error, 'Unknown error')}`)
     } finally {
@@ -155,7 +134,6 @@ export default function NotificationsControl() {
 
   const handleDisableNotifications = async () => {
     setErrorMessage(null)
-    setNotificationStatus(null)
 
     if (!notificationsSupported) {
       setErrorMessage('Notifications are not supported in this browser/context.')
@@ -168,7 +146,6 @@ export default function NotificationsControl() {
       const subscription = registration ? await registration.pushManager.getSubscription() : null
       if (!subscription) {
         setNotificationMode('disabled')
-        setNotificationStatus({ message: 'Notifications already disabled', tone: 'info' })
         return
       }
 
@@ -181,10 +158,8 @@ export default function NotificationsControl() {
       })
 
       setNotificationMode('disabled')
-      if (unsubscribeResponse.ok) {
-        setNotificationStatus({ message: 'Notifications disabled', tone: 'danger' })
-      } else {
-        setNotificationStatus({ message: 'Disabled in browser, but backend cleanup failed', tone: 'info' })
+      if (!unsubscribeResponse.ok) {
+        setErrorMessage('Notifications were disabled in the browser, but backend cleanup failed.')
       }
     } catch (error) {
       setErrorMessage(`Failed to disable notifications: ${getErrorMessage(error, 'Unknown error')}`)
@@ -196,7 +171,21 @@ export default function NotificationsControl() {
   return (
     <div className="config-row config-row-inline">
       <div className="config-row-inline-main">
-        <div className="config-label">Notifications</div>
+        <div className="config-label">
+          Notifications -{' '}
+          <span
+            className={[
+              'config-label-status',
+              notificationMode === 'enabled'
+                ? 'config-label-status-enabled'
+                : notificationMode === 'unsupported'
+                  ? 'config-label-status-unsupported'
+                  : 'config-label-status-disabled',
+            ].join(' ')}
+          >
+            {notificationMode}
+          </span>
+        </div>
         <div className="config-value-wrap">
           {notificationMode === 'disabled' ? (
             <button className="btn" onClick={handleEnableNotifications} disabled={notificationsBusy}>
@@ -213,7 +202,6 @@ export default function NotificationsControl() {
           ) : null}
         </div>
       </div>
-      {notificationStatus ? <div className={getStatusClassName(notificationStatus)}>{notificationStatus.message}</div> : null}
       {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
     </div>
   )
