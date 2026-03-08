@@ -245,7 +245,7 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
                 value={form.display_brightness}
                 onChange={(event) => setForm((prev) => ({ ...prev, display_brightness: event.target.value }))}
               />
-              <div className="config-help">Display brightness level from 0 (off) to 100 (max).</div>
+              <div className="config-help">ℹ️ Display brightness level from 0 (off) to 100 (max).</div>
             </div>
 
             <div className="config-row config-row-inline">
