@@ -17,6 +17,7 @@ type ConfigForm = {
   co2_clear: string
   cooldown_seconds: string
   display_brightness: string
+  night_mode_enabled: boolean
 }
 
 function configToForm(config: AppConfig): ConfigForm {
@@ -25,6 +26,7 @@ function configToForm(config: AppConfig): ConfigForm {
     co2_clear: String(config.co2_clear),
     cooldown_seconds: String(config.cooldown_seconds),
     display_brightness: String(config.display_brightness),
+    night_mode_enabled: config.night_mode_enabled,
   }
 }
 
@@ -47,6 +49,7 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
     co2_clear: '',
     cooldown_seconds: '',
     display_brightness: '',
+    night_mode_enabled: true,
   })
 
   useEffect(() => {
@@ -137,6 +140,7 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
           co2_clear: co2Clear,
           cooldown_seconds: cooldownSeconds,
           display_brightness: displayBrightness,
+          night_mode_enabled: form.night_mode_enabled,
         }),
       })
       if (!res.ok) {
@@ -242,6 +246,21 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
                 onChange={(event) => setForm((prev) => ({ ...prev, display_brightness: event.target.value }))}
               />
               <div className="config-help">Display brightness level from 0 (off) to 100 (max).</div>
+            </div>
+
+            <div className="config-row config-row-inline">
+              <div className="config-row-inline-main">
+                <div className="config-label">Night mode</div>
+                <div className="config-value-wrap">
+                  <button
+                    className={form.night_mode_enabled ? 'btn secondary' : 'btn'}
+                    onClick={() => setForm((prev) => ({ ...prev, night_mode_enabled: !prev.night_mode_enabled }))}
+                  >
+                    {form.night_mode_enabled ? 'Disable night mode' : 'Enable night mode'}
+                  </button>
+                </div>
+              </div>
+              <div className="config-help">Automatically set display brightness to 20% between 22:00 and 06:00.</div>
             </div>
 
             <NotificationsControl />

@@ -26,7 +26,9 @@ DEFAULT_CO2_HIGH = 1500
 DEFAULT_CO2_CLEAR = 500
 DEFAULT_COOLDOWN_SECONDS = 1800
 DEFAULT_DISPLAY_BRIGHTNESS = 60
+DEFAULT_NIGHT_MODE_ENABLED = True
 STATE_KEY_DISPLAY_BRIGHTNESS = 'display:brightness'
+STATE_KEY_NIGHT_MODE_ENABLED = 'display:night_mode_enabled'
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, 'data.db')
@@ -74,6 +76,7 @@ def display_brightness_from_state(raw: Optional[str], default: int) -> int:
 
 
 def read_config():
+    night_mode_default = '1' if DEFAULT_NIGHT_MODE_ENABLED else '0'
     return {
         'co2_high': int_from_state(get_state(conn, 'alert:co2_high'), DEFAULT_CO2_HIGH),
         'co2_clear': int_from_state(get_state(conn, 'alert:co2_clear'), DEFAULT_CO2_CLEAR),
@@ -82,6 +85,7 @@ def read_config():
             get_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS),
             DEFAULT_DISPLAY_BRIGHTNESS,
         ),
+        'night_mode_enabled': get_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, night_mode_default).strip() == '1',
     }
 
 
@@ -90,6 +94,7 @@ class ConfigPatchRequest(BaseModel):
     co2_clear: int
     cooldown_seconds: int
     display_brightness: Optional[int] = None
+    night_mode_enabled: Optional[bool] = None
 
 
 class PushSubscriptionKeys(BaseModel):
@@ -154,13 +159,7 @@ def api_data(
 
 @app.get('/api/config')
 def api_config():
-    config = read_config()
-    return {
-        'co2_high': config['co2_high'],
-        'co2_clear': config['co2_clear'],
-        'cooldown_seconds': config['cooldown_seconds'],
-        'display_brightness': config['display_brightness'],
-    }
+    return read_config()
 
 
 @app.put('/api/config')
@@ -177,14 +176,10 @@ def api_put_config(payload: ConfigPatchRequest):
     set_state(conn, 'alert:cooldown_seconds', str(payload.cooldown_seconds))
     if payload.display_brightness is not None:
         set_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS, str(payload.display_brightness))
+    if payload.night_mode_enabled is not None:
+        set_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, '1' if payload.night_mode_enabled else '0')
 
-    config = read_config()
-    return {
-        'co2_high': config['co2_high'],
-        'co2_clear': config['co2_clear'],
-        'cooldown_seconds': config['cooldown_seconds'],
-        'display_brightness': config['display_brightness'],
-    }
+    return read_config()
 
 
 @app.get('/api/push/public-key')

@@ -11,4 +11,5 @@ export type AppConfig = {
   co2_clear: number
   cooldown_seconds: number
   display_brightness: number
+  night_mode_enabled: boolean
 }

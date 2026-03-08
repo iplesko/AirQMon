@@ -37,8 +37,8 @@ Endpoints:
   - `start`/`end` are optional UNIX timestamps.
   - Defaults to the last 24 hours when omitted.
   - `points` defaults to `500`, max `10000`, and downsamples evenly.
-- `GET /api/config`: returns alert config (`co2_high`, `co2_clear`, `cooldown_seconds`).
-- `PUT /api/config`: replaces alert config values (`co2_high`, `co2_clear`, `cooldown_seconds`).
+- `GET /api/config`: returns runtime config (`co2_high`, `co2_clear`, `cooldown_seconds`, `display_brightness`, `night_mode_enabled`).
+- `PUT /api/config`: replaces runtime config values (`co2_high`, `co2_clear`, `cooldown_seconds`) and optionally updates `display_brightness` and `night_mode_enabled`.
 - `GET /api/push/public-key`: returns configured VAPID public key for browser subscription.
 - `POST /api/push/subscribe`: upserts browser push subscription (`endpoint`, `keys.p256dh`, `keys.auth`).
 - `POST /api/push/unsubscribe`: removes a stored browser subscription by endpoint.

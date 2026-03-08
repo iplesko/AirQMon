@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import signal
 import sys
 import time
@@ -27,6 +28,11 @@ COLOR_VERY_HIGH = "#FF3B30"  # .co2-very-high
 BACKGROUND = "#000000"
 DISPLAY_BRIGHTNESS = 60
 STATE_KEY_DISPLAY_BRIGHTNESS = "display:brightness"
+STATE_KEY_NIGHT_MODE_ENABLED = "display:night_mode_enabled"
+DEFAULT_NIGHT_MODE_ENABLED = True
+NIGHT_MODE_START_HOUR = 22
+NIGHT_MODE_END_HOUR = 6
+NIGHT_MODE_BRIGHTNESS = 20
 DISPLAY_PWM_HZ = 1000
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 SPI_PORT = 0
@@ -85,6 +91,27 @@ def read_display_brightness(conn) -> int:
     except (TypeError, ValueError):
         return DISPLAY_BRIGHTNESS
     return max(0, min(100, value))
+
+
+def read_night_mode_enabled(conn) -> bool:
+    default = "1" if DEFAULT_NIGHT_MODE_ENABLED else "0"
+    return get_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, default).strip() == "1"
+
+
+def is_night_mode_active() -> bool:
+    hour = datetime.now().hour
+    if NIGHT_MODE_START_HOUR == NIGHT_MODE_END_HOUR:
+        return True
+    if NIGHT_MODE_START_HOUR < NIGHT_MODE_END_HOUR:
+        return NIGHT_MODE_START_HOUR <= hour < NIGHT_MODE_END_HOUR
+    return hour >= NIGHT_MODE_START_HOUR or hour < NIGHT_MODE_END_HOUR
+
+
+def effective_brightness(configured_brightness: int, night_mode_enabled: bool) -> int:
+    night_mode_brightness = max(0, min(100, NIGHT_MODE_BRIGHTNESS))
+    if night_mode_enabled and is_night_mode_active():
+        return night_mode_brightness
+    return configured_brightness
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -176,13 +203,15 @@ def main() -> int:
     display_size = display.size
 
     display_pwm = None
-    display_brightness = read_display_brightness(conn)
+    configured_brightness = read_display_brightness(conn)
+    night_mode_enabled = read_night_mode_enabled(conn)
+    active_brightness = effective_brightness(configured_brightness, night_mode_enabled)
     try:
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(DISPLAY_BRIGHTNESS_GPIO, GPIO.OUT)
         display_pwm = GPIO.PWM(DISPLAY_BRIGHTNESS_GPIO, DISPLAY_PWM_HZ)
-        display_pwm.start(display_brightness)
+        display_pwm.start(active_brightness)
     except Exception as exc:
         print(f"Display brightness PWM init failed: {exc}", file=sys.stderr)
         display_pwm = None
@@ -200,10 +229,12 @@ def main() -> int:
     try:
         while not stop:
             try:
-                latest_brightness = read_display_brightness(conn)
-                if latest_brightness != display_brightness and display_pwm is not None:
+                configured_brightness = read_display_brightness(conn)
+                night_mode_enabled = read_night_mode_enabled(conn)
+                latest_brightness = effective_brightness(configured_brightness, night_mode_enabled)
+                if latest_brightness != active_brightness and display_pwm is not None:
                     display_pwm.ChangeDutyCycle(latest_brightness)
-                    display_brightness = latest_brightness
+                    active_brightness = latest_brightness
             except Exception as exc:
                 print(f"Display brightness update failed: {exc}", file=sys.stderr)
 
