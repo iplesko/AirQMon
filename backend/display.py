@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Render latest CO2 reading as a full-screen value on a 240x320 SPI LCD."""
+"""Render CO2, trend, temperature, and humidity on a 320x240 SPI LCD."""
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime
 import signal
 import sys
@@ -11,7 +12,14 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
-from db import get_conn, get_state, init_db, latest
+from co2_trend import (
+    CO2_TREND_BASELINE_OFFSET_SECONDS,
+    CO2_TREND_BASELINE_WINDOW_SECONDS,
+    Co2Trend,
+    calculate_co2_trend,
+    format_co2_trend_percentage,
+)
+from db import get_conn, get_state, init_db, latest, range_query
 import RPi.GPIO as GPIO
 from luma.core.interface.serial import spi
 from luma.lcd.device import ili9341
@@ -25,6 +33,10 @@ HEIGHT = 240
 COLOR_NORMAL = "#37B6FF"   # webapp --accent
 COLOR_HIGH = "#FF7B72"     # .co2-high
 COLOR_VERY_HIGH = "#FF3B30"  # .co2-very-high
+COLOR_GOOD = "#34D399"
+COLOR_TEXT = "#E6EEF8"
+COLOR_MUTED = "#94A3B8"
+COLOR_DIVIDER = "#8792A2"
 BACKGROUND = "#000000"
 DISPLAY_BRIGHTNESS = 60
 STATE_KEY_DISPLAY_BRIGHTNESS = "display:brightness"
@@ -41,6 +53,18 @@ ROTATE = 0
 DISPLAY_BRIGHTNESS_GPIO = 18
 DC_GPIO = 25
 RST_GPIO = 27
+SECTION_DIVIDER_WIDTH = 2
+BOTTOM_LABEL_FONT_SIZE = 14
+BOTTOM_SECTION_HEIGHT_RATIO = 3
+TOP_LABEL_FONT_SIZE = 14
+
+
+@dataclass(frozen=True)
+class DisplaySnapshot:
+    co2: Optional[float]
+    temperature: Optional[float]
+    humidity: Optional[float]
+    trend: Optional[Co2Trend]
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     default_db = repo_root / "backend" / "data.db"
 
     parser = argparse.ArgumentParser(
-        description="Show latest CO2 value on a Waveshare 2.4 inch SPI display."
+        description="Show CO2 with trend, temperature, and humidity on a Waveshare 2.4 inch SPI display."
     )
     parser.add_argument(
         "--db",
@@ -74,14 +98,47 @@ def co2_color(co2: Optional[float]) -> str:
     return COLOR_NORMAL
 
 
-def read_latest_co2(conn) -> Optional[float]:
+def trend_color(trend: Optional[Co2Trend]) -> str:
+    if trend is None or trend.direction == "neutral":
+        return COLOR_MUTED
+    if trend.direction == "rising":
+        return COLOR_HIGH
+    return COLOR_GOOD
+
+
+def trend_arrow(trend: Optional[Co2Trend]) -> str:
+    if trend is None:
+        return "--"
+    if trend.direction == "rising":
+        return "\u2197"
+    if trend.direction == "falling":
+        return "\u2198"
+    return "\u2192"
+
+
+def as_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    return float(value)
+
+
+def read_display_snapshot(conn) -> DisplaySnapshot:
     row = latest(conn)
     if not row:
-        return None
-    co2 = row.get("co2")
-    if co2 is None:
-        return None
-    return float(co2)
+        return DisplaySnapshot(co2=None, temperature=None, humidity=None, trend=None)
+
+    ts_raw = row.get("ts")
+    reference_ts = int(ts_raw) if ts_raw is not None else int(time.time())
+    trend_start = reference_ts - CO2_TREND_BASELINE_OFFSET_SECONDS - CO2_TREND_BASELINE_WINDOW_SECONDS
+    measurements = range_query(conn, trend_start, reference_ts)
+    trend = calculate_co2_trend(measurements)
+
+    return DisplaySnapshot(
+        co2=as_float(row.get("co2")),
+        temperature=as_float(row.get("temperature")),
+        humidity=as_float(row.get("humidity")),
+        trend=trend,
+    )
 
 
 def read_display_brightness(conn) -> int:
@@ -161,24 +218,112 @@ def draw_scaled_fallback_text(
     img.paste(color_img, (x, y), scaled)
 
 
-def make_frame(co2: Optional[float], size: tuple[int, int]) -> Image.Image:
+def draw_centered_text(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    color: str,
+) -> None:
+    x0, y0, x1, y1 = box
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = x0 + ((x1 - x0 + 1 - text_w) // 2) - bbox[0]
+    y = y0 + ((y1 - y0 + 1 - text_h) // 2) - bbox[1]
+    draw.text((x, y), text, font=font, fill=color)
+
+
+def draw_metric_box(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    label: str,
+    value: str,
+    value_color: str,
+) -> None:
+    x0, y0, x1, y1 = box
+    label_font = load_font(BOTTOM_LABEL_FONT_SIZE)
+    label_bbox = draw.textbbox((0, 0), label, font=label_font)
+    label_w = label_bbox[2] - label_bbox[0]
+    label_h = label_bbox[3] - label_bbox[1]
+    label_x = x0 + ((x1 - x0 + 1 - label_w) // 2) - label_bbox[0]
+    label_y = y0 + 6 - label_bbox[1]
+    draw.text((label_x, label_y), label, font=label_font, fill=COLOR_MUTED)
+
+    value_top = label_y + label_h + 6
+    value_box = (x0 + 6, value_top, x1 - 6, y1 - 6)
+    max_w = max(1, value_box[2] - value_box[0] + 1)
+    max_h = max(1, value_box[3] - value_box[1] + 1)
+    value_font = best_fit_font(value, max_w, max_h)
+    draw_centered_text(draw, value_box, value, value_font, value_color)
+
+
+def format_temperature(value: Optional[float]) -> str:
+    if value is None:
+        return "--"
+    return f"{value:.1f}\u00B0C"
+
+
+def format_humidity(value: Optional[float]) -> str:
+    if value is None:
+        return "--"
+    return f"{value:.1f}%"
+
+
+def format_trend(trend: Optional[Co2Trend]) -> str:
+    if trend is None:
+        return "--"
+    return f"{trend_arrow(trend)} {format_co2_trend_percentage(trend.percentage)}"
+
+
+def snapshot_signature(snapshot: DisplaySnapshot) -> tuple[object, ...]:
+    trend_direction = None if snapshot.trend is None else snapshot.trend.direction
+    trend_percentage = None if snapshot.trend is None else round(snapshot.trend.percentage, 1)
+    return (
+        None if snapshot.co2 is None else int(round(snapshot.co2)),
+        None if snapshot.temperature is None else round(snapshot.temperature, 1),
+        None if snapshot.humidity is None else round(snapshot.humidity, 1),
+        trend_direction,
+        trend_percentage,
+    )
+
+
+def make_frame(snapshot: DisplaySnapshot, size: tuple[int, int]) -> Image.Image:
     width, height = size
-    value_text = "--" if co2 is None else f"{int(round(co2))}"
-    color = co2_color(co2)
+    value_text = "--" if snapshot.co2 is None else f"{int(round(snapshot.co2))}"
+    value_color = co2_color(snapshot.co2)
 
     img = Image.new("RGB", (width, height), BACKGROUND)
     draw = ImageDraw.Draw(img)
 
-    # Use almost full panel area while leaving a tiny anti-clip margin.
-    target_w = max(1, int(width * 0.995))
-    target_h = max(1, int(height * 0.995))
+    top_height = (height * (BOTTOM_SECTION_HEIGHT_RATIO - 1)) // BOTTOM_SECTION_HEIGHT_RATIO
+    divider_y = top_height
+    bottom_y0 = divider_y + SECTION_DIVIDER_WIDTH
+
+    draw.rectangle((0, divider_y, width - 1, bottom_y0 - 1), fill=COLOR_DIVIDER)
+
+    top_label_font = load_font(TOP_LABEL_FONT_SIZE)
+    top_label_y = 6
+    draw.text((10, top_label_y), "CO2 ppm", font=top_label_font, fill=COLOR_MUTED)
+    top_label_bbox = draw.textbbox((10, top_label_y), "CO2 ppm", font=top_label_font)
+    top_box = (4, top_label_bbox[3] + 4, width - 5, max(top_label_bbox[3] + 4, divider_y - 5))
+    target_w = max(1, top_box[2] - top_box[0] + 1)
+    target_h = max(1, top_box[3] - top_box[1] + 1)
     font = best_fit_font(value_text, target_w, target_h)
-    bbox = draw.textbbox((0, 0), value_text, font=font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    x = (width - text_w) // 2 - bbox[0]
-    y = (height - text_h) // 2 - bbox[1]
-    draw.text((x, y), value_text, font=font, fill=color)
+    draw_centered_text(draw, top_box, value_text, font, value_color)
+
+    first_divider_x = width // 3
+    second_divider_x = (2 * width) // 3
+    draw.rectangle((first_divider_x, bottom_y0, first_divider_x + SECTION_DIVIDER_WIDTH - 1, height - 1), fill=COLOR_DIVIDER)
+    draw.rectangle((second_divider_x, bottom_y0, second_divider_x + SECTION_DIVIDER_WIDTH - 1, height - 1), fill=COLOR_DIVIDER)
+
+    trend_box = (0, bottom_y0, first_divider_x - 1, height - 1)
+    temp_box = (first_divider_x + SECTION_DIVIDER_WIDTH, bottom_y0, second_divider_x - 1, height - 1)
+    humidity_box = (second_divider_x + SECTION_DIVIDER_WIDTH, bottom_y0, width - 1, height - 1)
+
+    draw_metric_box(draw, trend_box, "Trend", format_trend(snapshot.trend), trend_color(snapshot.trend))
+    draw_metric_box(draw, temp_box, "Temp", format_temperature(snapshot.temperature), COLOR_TEXT)
+    draw_metric_box(draw, humidity_box, "Hum", format_humidity(snapshot.humidity), COLOR_TEXT)
     return img
 
 
@@ -225,7 +370,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle_stop)
     signal.signal(signal.SIGTERM, _handle_stop)
 
-    last_drawn: Optional[int] = None
+    last_drawn_signature: Optional[tuple[object, ...]] = None
     try:
         while not stop:
             try:
@@ -239,12 +384,12 @@ def main() -> int:
                 print(f"Display brightness update failed: {exc}", file=sys.stderr)
 
             try:
-                co2 = read_latest_co2(conn)
-                rounded = None if co2 is None else int(round(co2))
-                if rounded != last_drawn:
-                    frame = make_frame(co2, display_size)
+                snapshot = read_display_snapshot(conn)
+                current_signature = snapshot_signature(snapshot)
+                if current_signature != last_drawn_signature:
+                    frame = make_frame(snapshot, display_size)
                     display.display(frame)
-                    last_drawn = rounded
+                    last_drawn_signature = current_signature
             except Exception as exc:
                 err_img = Image.new("RGB", display_size, BACKGROUND)
                 err_draw = ImageDraw.Draw(err_img)
