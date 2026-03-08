@@ -1,3 +1,4 @@
+import { calculateCo2Trend, formatCo2TrendPercentage } from './co2Trend'
 import type { Measurement } from './types'
 
 function co2ColorClass(value: number | undefined) {
@@ -12,15 +13,42 @@ function formatReading(value: number, unit: string, decimals: number): string {
   return `${value.toFixed(decimals)} ${unit}`
 }
 
-export default function CurrentReading({ latest }: { latest: Measurement | null }) {
+function getTrendArrow(direction: 'rising' | 'falling' | 'neutral'): string {
+  if (direction === 'rising') return '\u2197'
+  if (direction === 'falling') return '\u2198'
+  return '\u2192'
+}
+
+function buildTrendMeasurements(data: Measurement[], latest: Measurement | null): Measurement[] {
+  if (!latest) return data
+  if (data.some((item) => item.ts === latest.ts)) return data
+  return [...data, latest].sort((a, b) => a.ts - b.ts)
+}
+
+export default function CurrentReading({ latest, data }: { latest: Measurement | null; data: Measurement[] }) {
+  const trend = calculateCo2Trend(buildTrendMeasurements(data, latest))
+
   return (
     <div className="card latest">
       <div className="muted">Latest measurement</div>
-      <div className="latest-row">
-        <div className={`co2-big co2-value ${latest ? co2ColorClass(latest.co2) : ''}`}>
-          {latest ? `${latest.co2} ppm` : '--'}
+      <div className="latest-grid">
+        <div className="latest-column latest-column-primary">
+          <div className="latest-reading-group">
+            <div className={`co2-big co2-value ${latest ? co2ColorClass(latest.co2) : ''}`}>
+              {latest ? `${latest.co2} ppm` : '--'}
+            </div>
+            <div className="trend-block">
+              <div className="trend-label">10 min trend</div>
+              <div className={`trend-indicator ${trend ? `trend-${trend.direction}` : 'trend-neutral'}`}>
+                <span className="trend-arrow" aria-hidden="true">
+                  {trend ? getTrendArrow(trend.direction) : '\u2192'}
+                </span>
+                <span>{trend ? formatCo2TrendPercentage(trend.percentage) : '--'}</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="latest-right">
+        <div className="latest-column latest-column-details">
           <div className="timestamp">{latest ? `${new Date(latest.ts * 1000).toLocaleString()}` : ''}</div>
           <div className="latest-meta">
             <div className="stat">

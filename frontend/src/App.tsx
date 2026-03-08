@@ -150,7 +150,7 @@ export default function App() {
       </div>
 
       <div className="grid">
-        <CurrentReading latest={latest} />
+        <CurrentReading latest={latest} data={data} />
         <div className="card chartWrap">
           <MeasurementChart data={data} dark={dark} />
         </div>
