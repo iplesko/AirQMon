@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 type RangeControlsProps = {
   rangeSeconds: number
@@ -49,8 +49,22 @@ function persistRangeSeconds(rangeSeconds: number): void {
 }
 
 export default function RangeControls({ rangeSeconds, onSelectRange }: RangeControlsProps) {
+  const activeChipRef = useRef<HTMLButtonElement | null>(null)
+
   useEffect(() => {
     persistRangeSeconds(rangeSeconds)
+  }, [rangeSeconds])
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      activeChipRef.current?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
   }, [rangeSeconds])
 
   return (
@@ -61,6 +75,7 @@ export default function RangeControls({ rangeSeconds, onSelectRange }: RangeCont
           <button
             key={option.value}
             type="button"
+            ref={rangeSeconds === option.value ? activeChipRef : null}
             className={`range-chip ${rangeSeconds === option.value ? 'active' : ''}`}
             onClick={() => onSelectRange(option.value)}
           >
