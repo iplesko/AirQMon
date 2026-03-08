@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Render latest CO2 reading as a full-screen value on a 240x320 SPI LCD.
-
-Default behavior:
-- Reads latest CO2 from SQLite every 5 seconds.
-- Uses webapp color thresholds:
-  - < 1000 ppm: #37B6FF
-  - >= 1000 ppm: #FF7B72
-  - >= 2000 ppm: #FF3B30
-- Drives backlight at a fixed moderate brightness (60%) via PWM GPIO.
-"""
-
+"""Render latest CO2 reading as a full-screen value on a 240x320 SPI LCD."""
 from __future__ import annotations
 
 import argparse
@@ -20,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
-from db import get_conn, init_db, latest
+from db import get_conn, get_state, init_db, latest
 import RPi.GPIO as GPIO
 from luma.core.interface.serial import spi
 from luma.lcd.device import ili9341
@@ -35,13 +25,14 @@ COLOR_NORMAL = "#37B6FF"   # webapp --accent
 COLOR_HIGH = "#FF7B72"     # .co2-high
 COLOR_VERY_HIGH = "#FF3B30"  # .co2-very-high
 BACKGROUND = "#000000"
-BRIGHTNESS = 0.60
-BACKLIGHT_PWM_HZ = 1000
+DISPLAY_BRIGHTNESS = 60
+STATE_KEY_DISPLAY_BRIGHTNESS = "display:brightness"
+DISPLAY_PWM_HZ = 1000
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 SPI_PORT = 0
 SPI_DEVICE = 0
 ROTATE = 0
-BACKLIGHT_GPIO = 18
+DISPLAY_BRIGHTNESS_GPIO = 18
 DC_GPIO = 25
 RST_GPIO = 27
 
@@ -85,6 +76,15 @@ def read_latest_co2(conn) -> Optional[float]:
     if co2 is None:
         return None
     return float(co2)
+
+
+def read_display_brightness(conn) -> int:
+    raw = get_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS, str(DISPLAY_BRIGHTNESS))
+    try:
+        value = int(raw) if raw is not None else DISPLAY_BRIGHTNESS
+    except (TypeError, ValueError):
+        return DISPLAY_BRIGHTNESS
+    return max(0, min(100, value))
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -175,16 +175,17 @@ def main() -> int:
     display = ili9341(serial, width=WIDTH, height=HEIGHT, rotate=ROTATE)
     display_size = display.size
 
-    backlight_pwm = None
+    display_pwm = None
+    display_brightness = read_display_brightness(conn)
     try:
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(BACKLIGHT_GPIO, GPIO.OUT)
-        backlight_pwm = GPIO.PWM(BACKLIGHT_GPIO, BACKLIGHT_PWM_HZ)
-        backlight_pwm.start(BRIGHTNESS * 100.0)
+        GPIO.setup(DISPLAY_BRIGHTNESS_GPIO, GPIO.OUT)
+        display_pwm = GPIO.PWM(DISPLAY_BRIGHTNESS_GPIO, DISPLAY_PWM_HZ)
+        display_pwm.start(display_brightness)
     except Exception as exc:
-        print(f"Backlight PWM init failed: {exc}", file=sys.stderr)
-        backlight_pwm = None
+        print(f"Display brightness PWM init failed: {exc}", file=sys.stderr)
+        display_pwm = None
 
     stop = False
 
@@ -198,6 +199,14 @@ def main() -> int:
     last_drawn: Optional[int] = None
     try:
         while not stop:
+            try:
+                latest_brightness = read_display_brightness(conn)
+                if latest_brightness != display_brightness and display_pwm is not None:
+                    display_pwm.ChangeDutyCycle(latest_brightness)
+                    display_brightness = latest_brightness
+            except Exception as exc:
+                print(f"Display brightness update failed: {exc}", file=sys.stderr)
+
             try:
                 co2 = read_latest_co2(conn)
                 rounded = None if co2 is None else int(round(co2))
@@ -217,14 +226,14 @@ def main() -> int:
     finally:
         conn.close()
 
-    if backlight_pwm is not None:
+    if display_pwm is not None:
         try:
-            backlight_pwm.ChangeDutyCycle(0.0)
-            backlight_pwm.stop()
+            display_pwm.ChangeDutyCycle(0.0)
+            display_pwm.stop()
         except Exception:
             pass
     try:
-        GPIO.cleanup(BACKLIGHT_GPIO)
+        GPIO.cleanup(DISPLAY_BRIGHTNESS_GPIO)
     except Exception:
         pass
     return 0

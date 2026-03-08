@@ -4,7 +4,7 @@ import CurrentReading from './CurrentReading'
 import ConfigModal from './ConfigModal/ConfigModal'
 import MeasurementChart from './MeasurementChart'
 import RangeControls, { getInitialRangeSeconds } from './RangeControls'
-import ThemeToggle, { getInitialDarkMode } from './ThemeToggle'
+import { applyThemePreference, getInitialDarkMode } from './ConfigModal/ThemeToggle'
 import type { Measurement } from './types'
 
 const POLL_INTERVAL_MS = 5000
@@ -108,6 +108,10 @@ export default function App() {
     void fetchLatest()
   }, [rangeSeconds, fetchLatest, fetchRange])
 
+  useEffect(() => {
+    applyThemePreference(dark)
+  }, [dark])
+
   // Poll latest snapshot and range delta every 5s.
   useEffect(() => {
     const id = setInterval(() => {
@@ -142,7 +146,6 @@ export default function App() {
             Config
           </button>
           <RangeControls rangeSeconds={rangeSeconds} onSelectRange={setRangeSeconds} />
-          <ThemeToggle dark={dark} onToggle={() => setDark((value) => !value)} />
         </div>
       </div>
 
@@ -153,7 +156,12 @@ export default function App() {
         </div>
       </div>
 
-      <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
+      <ConfigModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        dark={dark}
+        onToggleTheme={() => setDark((value) => !value)}
+      />
     </div>
   )
 }

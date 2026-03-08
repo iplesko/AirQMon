@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MouseEvent } from 'react'
+import ThemeToggle from './ThemeToggle'
 import type { AppConfig } from '../types'
 import NotificationsControl from './NotificationsControl'
 import './ConfigModal.css'
@@ -7,12 +8,15 @@ import './ConfigModal.css'
 type ConfigModalProps = {
   open: boolean
   onClose: () => void
+  dark: boolean
+  onToggleTheme: () => void
 }
 
 type ConfigForm = {
   co2_high: string
   co2_clear: string
   cooldown_seconds: string
+  display_brightness: string
 }
 
 function configToForm(config: AppConfig): ConfigForm {
@@ -20,6 +24,7 @@ function configToForm(config: AppConfig): ConfigForm {
     co2_high: String(config.co2_high),
     co2_clear: String(config.co2_clear),
     cooldown_seconds: String(config.cooldown_seconds),
+    display_brightness: String(config.display_brightness),
   }
 }
 
@@ -32,7 +37,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
-export default function ConfigModal({ open, onClose }: ConfigModalProps) {
+export default function ConfigModal({ open, onClose, dark, onToggleTheme }: ConfigModalProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -41,6 +46,7 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     co2_high: '',
     co2_clear: '',
     cooldown_seconds: '',
+    display_brightness: '',
   })
 
   useEffect(() => {
@@ -96,8 +102,9 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     const co2High = Number(form.co2_high)
     const co2Clear = Number(form.co2_clear)
     const cooldownSeconds = Number(form.cooldown_seconds)
+    const displayBrightness = Number(form.display_brightness)
 
-    if (!Number.isFinite(co2High) || !Number.isFinite(co2Clear) || !Number.isFinite(cooldownSeconds)) {
+    if (!Number.isFinite(co2High) || !Number.isFinite(co2Clear) || !Number.isFinite(cooldownSeconds) || !Number.isFinite(displayBrightness)) {
       setErrorMessage('Config values must be numeric')
       return
     }
@@ -107,6 +114,10 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
     }
     if (!Number.isInteger(cooldownSeconds) || cooldownSeconds < 0) {
       setErrorMessage('Cooldown must be a non-negative integer')
+      return
+    }
+    if (!Number.isInteger(displayBrightness) || displayBrightness < 0 || displayBrightness > 100) {
+      setErrorMessage('Display brightness must be an integer between 0 and 100')
       return
     }
     if (co2Clear >= co2High) {
@@ -125,6 +136,7 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
           co2_high: co2High,
           co2_clear: co2Clear,
           cooldown_seconds: cooldownSeconds,
+          display_brightness: displayBrightness,
         }),
       })
       if (!res.ok) {
@@ -215,7 +227,33 @@ export default function ConfigModal({ open, onClose }: ConfigModalProps) {
               <div className="config-help">ℹ️ Minimum seconds between starting one high alert and allowing the next one.</div>
             </div>
 
+            <div className="config-row">
+              <label className="config-label" htmlFor="config-display-brightness">
+                Display brightness (%)
+              </label>
+              <input
+                id="config-display-brightness"
+                className="config-input"
+                type="number"
+                step="1"
+                min="0"
+                max="100"
+                value={form.display_brightness}
+                onChange={(event) => setForm((prev) => ({ ...prev, display_brightness: event.target.value }))}
+              />
+              <div className="config-help">Display brightness level from 0 (off) to 100 (max).</div>
+            </div>
+
             <NotificationsControl />
+
+            <div className="config-row config-row-inline">
+              <div className="config-row-inline-main">
+                <div className="config-label">Theme</div>
+                <div className="config-value-wrap">
+                  <ThemeToggle dark={dark} onToggle={onToggleTheme} />
+                </div>
+              </div>
+            </div>
 
             <div className="config-actions">
               <button className="btn danger" onClick={handleLogout}>

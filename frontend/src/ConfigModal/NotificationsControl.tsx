@@ -194,24 +194,26 @@ export default function NotificationsControl() {
   }
 
   return (
-    <div className="config-row">
-      <label className="config-label">Notifications</label>
-      <div className="config-value-wrap">
-        {notificationMode === 'disabled' ? (
-          <button className="btn" onClick={handleEnableNotifications} disabled={notificationsBusy}>
-            {notificationAction === 'enable' ? 'Enabling...' : 'Enable notifications'}
-          </button>
-        ) : null}
-        {notificationMode === 'enabled' ? (
-          <button className="btn secondary" onClick={handleDisableNotifications} disabled={notificationsBusy}>
-            {notificationAction === 'disable' ? 'Disabling...' : 'Disable notifications'}
-          </button>
-        ) : null}
-        {notificationMode === 'unsupported' ? (
-          <div className="config-copy-status config-copy-status-info">Notifications unsupported in this context</div>
-        ) : null}
-        {notificationStatus ? <div className={getStatusClassName(notificationStatus)}>{notificationStatus.message}</div> : null}
+    <div className="config-row config-row-inline">
+      <div className="config-row-inline-main">
+        <div className="config-label">Notifications</div>
+        <div className="config-value-wrap">
+          {notificationMode === 'disabled' ? (
+            <button className="btn" onClick={handleEnableNotifications} disabled={notificationsBusy}>
+              {notificationAction === 'enable' ? 'Enabling...' : 'Enable notifications'}
+            </button>
+          ) : null}
+          {notificationMode === 'enabled' ? (
+            <button className="btn secondary" onClick={handleDisableNotifications} disabled={notificationsBusy}>
+              {notificationAction === 'disable' ? 'Disabling...' : 'Disable notifications'}
+            </button>
+          ) : null}
+          {notificationMode === 'unsupported' ? (
+            <div className="config-copy-status config-copy-status-info">Notifications unsupported in this context</div>
+          ) : null}
+        </div>
       </div>
+      {notificationStatus ? <div className={getStatusClassName(notificationStatus)}>{notificationStatus.message}</div> : null}
       {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
     </div>
   )

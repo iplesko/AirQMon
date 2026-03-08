@@ -10,4 +10,5 @@ export type AppConfig = {
   co2_high: number
   co2_clear: number
   cooldown_seconds: number
+  display_brightness: number
 }

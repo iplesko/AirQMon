@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-
 type ThemeToggleProps = {
   dark: boolean
   onToggle: () => void
@@ -37,14 +35,14 @@ function applyThemeVars(dark: boolean) {
   root.setProperty('--bg2', '#ffffff')
 }
 
-export default function ThemeToggle({ dark, onToggle }: ThemeToggleProps) {
-  useEffect(() => {
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, dark ? 'dark' : 'light')
-    } catch {}
-    applyThemeVars(dark)
-  }, [dark])
+export function applyThemePreference(dark: boolean) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, dark ? 'dark' : 'light')
+  } catch {}
+  applyThemeVars(dark)
+}
 
+export default function ThemeToggle({ dark, onToggle }: ThemeToggleProps) {
   return (
     <button className="btn" onClick={onToggle}>
       {dark ? 'Light' : 'Dark'}

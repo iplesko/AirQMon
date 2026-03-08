@@ -25,6 +25,8 @@ MAX_POINTS = 10000
 DEFAULT_CO2_HIGH = 1500
 DEFAULT_CO2_CLEAR = 500
 DEFAULT_COOLDOWN_SECONDS = 1800
+DEFAULT_DISPLAY_BRIGHTNESS = 60
+STATE_KEY_DISPLAY_BRIGHTNESS = 'display:brightness'
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, 'data.db')
@@ -61,11 +63,25 @@ def int_from_state(raw: Optional[str], default: int) -> int:
         return default
 
 
-def read_alert_config():
+def display_brightness_from_state(raw: Optional[str], default: int) -> int:
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(0, min(100, value))
+
+
+def read_config():
     return {
         'co2_high': int_from_state(get_state(conn, 'alert:co2_high'), DEFAULT_CO2_HIGH),
         'co2_clear': int_from_state(get_state(conn, 'alert:co2_clear'), DEFAULT_CO2_CLEAR),
         'cooldown_seconds': int_from_state(get_state(conn, 'alert:cooldown_seconds'), DEFAULT_COOLDOWN_SECONDS),
+        'display_brightness': display_brightness_from_state(
+            get_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS),
+            DEFAULT_DISPLAY_BRIGHTNESS,
+        ),
     }
 
 
@@ -73,6 +89,7 @@ class ConfigPatchRequest(BaseModel):
     co2_high: int
     co2_clear: int
     cooldown_seconds: int
+    display_brightness: Optional[int] = None
 
 
 class PushSubscriptionKeys(BaseModel):
@@ -137,11 +154,12 @@ def api_data(
 
 @app.get('/api/config')
 def api_config():
-    alert_config = read_alert_config()
+    config = read_config()
     return {
-        'co2_high': alert_config['co2_high'],
-        'co2_clear': alert_config['co2_clear'],
-        'cooldown_seconds': alert_config['cooldown_seconds'],
+        'co2_high': config['co2_high'],
+        'co2_clear': config['co2_clear'],
+        'cooldown_seconds': config['cooldown_seconds'],
+        'display_brightness': config['display_brightness'],
     }
 
 
@@ -151,16 +169,21 @@ def api_put_config(payload: ConfigPatchRequest):
         raise HTTPException(status_code=400, detail='co2_clear must be lower than co2_high')
     if payload.cooldown_seconds < 0:
         raise HTTPException(status_code=400, detail='cooldown_seconds must be >= 0')
+    if payload.display_brightness is not None and not (0 <= payload.display_brightness <= 100):
+        raise HTTPException(status_code=400, detail='display_brightness must be between 0 and 100')
 
     set_state(conn, 'alert:co2_high', str(payload.co2_high))
     set_state(conn, 'alert:co2_clear', str(payload.co2_clear))
     set_state(conn, 'alert:cooldown_seconds', str(payload.cooldown_seconds))
+    if payload.display_brightness is not None:
+        set_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS, str(payload.display_brightness))
 
-    alert_config = read_alert_config()
+    config = read_config()
     return {
-        'co2_high': alert_config['co2_high'],
-        'co2_clear': alert_config['co2_clear'],
-        'cooldown_seconds': alert_config['cooldown_seconds'],
+        'co2_high': config['co2_high'],
+        'co2_clear': config['co2_clear'],
+        'cooldown_seconds': config['cooldown_seconds'],
+        'display_brightness': config['display_brightness'],
     }
 
 
