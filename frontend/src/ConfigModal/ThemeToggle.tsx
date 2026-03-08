@@ -22,6 +22,8 @@ function applyThemeVars(dark: boolean) {
     root.setProperty('--text', '#e6eef8')
     root.setProperty('--accent', '#37b6ff')
     root.setProperty('--glass', 'rgba(255,255,255,0.03)')
+    root.setProperty('--button-secondary-bg', 'rgba(255,255,255,0.06)')
+    root.setProperty('--button-secondary-border', 'rgba(255,255,255,0.12)')
     root.setProperty('--bg2', '#071022')
     return
   }
@@ -32,6 +34,8 @@ function applyThemeVars(dark: boolean) {
   root.setProperty('--text', '#0b1b2b')
   root.setProperty('--accent', '#0ea5ff')
   root.setProperty('--glass', 'rgba(11,27,43,0.03)')
+  root.setProperty('--button-secondary-bg', 'rgba(11,27,43,0.06)')
+  root.setProperty('--button-secondary-border', 'rgba(11,27,43,0.14)')
   root.setProperty('--bg2', '#ffffff')
 }
 
