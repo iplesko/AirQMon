@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """Alert worker: watches DB for new readings and pushes Web Push notifications."""
 import argparse
+from dataclasses import dataclass
 import json
 import os
 import signal
 import sys
 import time
 
-from alert_runtime import (
-    AlertConfig,
-    AlertRuntimeState,
-    ensure_runtime_config,
-    load_runtime_state,
-    persist_runtime_state,
-)
-from db import get_conn, init_db, query_after_id
+from db import get_conn, get_state, init_db, query_after_id, set_state
 from push_notifications import build_high_payload, build_recovery_payload, send_push_to_all
+from runtime_config import AlertConfig, bool_from_state, ensure_alert_config, int_from_state
 
 running = True
 DEFAULT_POLL_INTERVAL = 5.0
+STATE_KEY_LAST_SEEN_ID = 'alert:last_seen_id'
+STATE_KEY_IN_ALERT = 'alert:in_alert'
+STATE_KEY_LAST_ALERT_TS = 'alert:last_alert_ts'
+
+
+@dataclass
+class AlertRuntimeState:
+    last_seen_id: int = 0
+    in_alert: bool = False
+    last_alert_ts: int = 0
 
 
 def handle_sig(signum, frame):
@@ -47,6 +52,20 @@ def get_vapid_credentials() -> tuple[str, dict]:
 
 def log_event(event: str, **fields) -> None:
     print(json.dumps({'event': event, **fields}))
+
+
+def load_runtime_state(conn) -> AlertRuntimeState:
+    return AlertRuntimeState(
+        last_seen_id=int_from_state(get_state(conn, STATE_KEY_LAST_SEEN_ID), 0),
+        in_alert=bool_from_state(get_state(conn, STATE_KEY_IN_ALERT), False),
+        last_alert_ts=int_from_state(get_state(conn, STATE_KEY_LAST_ALERT_TS), 0),
+    )
+
+
+def persist_runtime_state(conn, state: AlertRuntimeState) -> None:
+    set_state(conn, STATE_KEY_LAST_SEEN_ID, str(state.last_seen_id))
+    set_state(conn, STATE_KEY_IN_ALERT, '1' if state.in_alert else '0')
+    set_state(conn, STATE_KEY_LAST_ALERT_TS, str(state.last_alert_ts))
 
 
 def stats_log_fields(row: dict, stats) -> dict:
@@ -101,7 +120,7 @@ def main():
     conn = get_conn(args.db)
     init_db(conn)
     try:
-        config = ensure_runtime_config(conn)
+        config = ensure_alert_config(conn)
         vapid_private_key, vapid_claims = get_vapid_credentials()
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -133,7 +152,7 @@ def main():
     try:
         while running:
             try:
-                config = ensure_runtime_config(conn)
+                config = ensure_alert_config(conn)
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 time.sleep(args.poll_interval)

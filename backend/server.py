@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -11,24 +12,16 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat,
 from db import (
     delete_push_subscription,
     get_conn,
-    get_state,
     init_db,
     latest,
     range_query,
-    set_state,
     upsert_push_subscription,
 )
+from runtime_config import RuntimeConfig, persist_runtime_config, read_runtime_config, validate_runtime_config
 
 APP = app = FastAPI()
 DEFAULT_POINTS = 500
 MAX_POINTS = 10000
-DEFAULT_CO2_HIGH = 1500
-DEFAULT_CO2_CLEAR = 500
-DEFAULT_COOLDOWN_SECONDS = 1800
-DEFAULT_DISPLAY_BRIGHTNESS = 60
-DEFAULT_NIGHT_MODE_ENABLED = True
-STATE_KEY_DISPLAY_BRIGHTNESS = 'display:brightness'
-STATE_KEY_NIGHT_MODE_ENABLED = 'display:night_mode_enabled'
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, 'data.db')
@@ -54,39 +47,6 @@ async def set_static_cache_headers(request: Request, call_next):
         response.headers['Expires'] = '0'
 
     return response
-
-
-def int_from_state(raw: Optional[str], default: int) -> int:
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
-
-
-def display_brightness_from_state(raw: Optional[str], default: int) -> int:
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return max(0, min(100, value))
-
-
-def read_config():
-    night_mode_default = '1' if DEFAULT_NIGHT_MODE_ENABLED else '0'
-    return {
-        'co2_high': int_from_state(get_state(conn, 'alert:co2_high'), DEFAULT_CO2_HIGH),
-        'co2_clear': int_from_state(get_state(conn, 'alert:co2_clear'), DEFAULT_CO2_CLEAR),
-        'cooldown_seconds': int_from_state(get_state(conn, 'alert:cooldown_seconds'), DEFAULT_COOLDOWN_SECONDS),
-        'display_brightness': display_brightness_from_state(
-            get_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS),
-            DEFAULT_DISPLAY_BRIGHTNESS,
-        ),
-        'night_mode_enabled': get_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, night_mode_default).strip() == '1',
-    }
 
 
 class ConfigPatchRequest(BaseModel):
@@ -159,27 +119,26 @@ def api_data(
 
 @app.get('/api/config')
 def api_config():
-    return read_config()
+    return asdict(read_runtime_config(conn, persist_defaults=True))
 
 
 @app.put('/api/config')
 def api_put_config(payload: ConfigPatchRequest):
-    if payload.co2_clear >= payload.co2_high:
-        raise HTTPException(status_code=400, detail='co2_clear must be lower than co2_high')
-    if payload.cooldown_seconds < 0:
-        raise HTTPException(status_code=400, detail='cooldown_seconds must be >= 0')
-    if payload.display_brightness is not None and not (0 <= payload.display_brightness <= 100):
-        raise HTTPException(status_code=400, detail='display_brightness must be between 0 and 100')
+    current_config = read_runtime_config(conn, persist_defaults=True)
+    updated_config = RuntimeConfig(
+        co2_high=payload.co2_high,
+        co2_clear=payload.co2_clear,
+        cooldown_seconds=payload.cooldown_seconds,
+        display_brightness=current_config.display_brightness if payload.display_brightness is None else payload.display_brightness,
+        night_mode_enabled=current_config.night_mode_enabled if payload.night_mode_enabled is None else payload.night_mode_enabled,
+    )
+    try:
+        validate_runtime_config(updated_config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    set_state(conn, 'alert:co2_high', str(payload.co2_high))
-    set_state(conn, 'alert:co2_clear', str(payload.co2_clear))
-    set_state(conn, 'alert:cooldown_seconds', str(payload.cooldown_seconds))
-    if payload.display_brightness is not None:
-        set_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS, str(payload.display_brightness))
-    if payload.night_mode_enabled is not None:
-        set_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, '1' if payload.night_mode_enabled else '0')
-
-    return read_config()
+    persist_runtime_config(conn, updated_config)
+    return asdict(updated_config)
 
 
 @app.get('/api/push/public-key')

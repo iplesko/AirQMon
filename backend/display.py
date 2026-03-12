@@ -19,10 +19,11 @@ from co2_trend import (
     calculate_co2_trend,
     format_co2_trend_percentage,
 )
-from db import get_conn, get_state, init_db, latest, range_query
+from db import get_conn, init_db, latest, range_query
 import RPi.GPIO as GPIO
 from luma.core.interface.serial import spi
 from luma.lcd.device import ili9341
+from runtime_config import read_display_config
 
 
 # ILI9341 supports native mode 320x240 in luma.lcd.
@@ -37,10 +38,6 @@ COLOR_TEXT = "#E6EEF8"
 COLOR_MUTED = "#94A3B8"
 COLOR_DIVIDER = "#8792A2"
 BACKGROUND = "#000000"
-DISPLAY_BRIGHTNESS = 60
-STATE_KEY_DISPLAY_BRIGHTNESS = "display:brightness"
-STATE_KEY_NIGHT_MODE_ENABLED = "display:night_mode_enabled"
-DEFAULT_NIGHT_MODE_ENABLED = True
 NIGHT_MODE_START_HOUR = 22
 NIGHT_MODE_END_HOUR = 6
 NIGHT_MODE_BRIGHTNESS = 1
@@ -138,20 +135,6 @@ def read_display_snapshot(conn) -> DisplaySnapshot:
         humidity=as_float(row.get("humidity")),
         trend=trend,
     )
-
-
-def read_display_brightness(conn) -> int:
-    raw = get_state(conn, STATE_KEY_DISPLAY_BRIGHTNESS, str(DISPLAY_BRIGHTNESS))
-    try:
-        value = int(raw) if raw is not None else DISPLAY_BRIGHTNESS
-    except (TypeError, ValueError):
-        return DISPLAY_BRIGHTNESS
-    return max(0, min(100, value))
-
-
-def read_night_mode_enabled(conn) -> bool:
-    default = "1" if DEFAULT_NIGHT_MODE_ENABLED else "0"
-    return get_state(conn, STATE_KEY_NIGHT_MODE_ENABLED, default).strip() == "1"
 
 
 def is_night_mode_active() -> bool:
@@ -322,9 +305,11 @@ def main() -> int:
     display_size = display.size
 
     display_pwm = None
-    configured_brightness = read_display_brightness(conn)
-    night_mode_enabled = read_night_mode_enabled(conn)
-    active_brightness = effective_brightness(configured_brightness, night_mode_enabled)
+    display_config = read_display_config(conn, persist_defaults=True)
+    active_brightness = effective_brightness(
+        display_config.display_brightness,
+        display_config.night_mode_enabled,
+    )
     try:
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
@@ -348,9 +333,11 @@ def main() -> int:
     try:
         while not stop:
             try:
-                configured_brightness = read_display_brightness(conn)
-                night_mode_enabled = read_night_mode_enabled(conn)
-                latest_brightness = effective_brightness(configured_brightness, night_mode_enabled)
+                display_config = read_display_config(conn)
+                latest_brightness = effective_brightness(
+                    display_config.display_brightness,
+                    display_config.night_mode_enabled,
+                )
                 if latest_brightness != active_brightness and display_pwm is not None:
                     display_pwm.ChangeDutyCycle(latest_brightness)
                     active_brightness = latest_brightness
