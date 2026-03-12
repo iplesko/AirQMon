@@ -4,8 +4,8 @@
   --card: #0b1220;
   --muted: #94a3b8;
   --text: #e6eef8;
-  --accent: #37b6ff;
-  --success: #34d399;
+  --accent: #34d399;
+  --success: var(--accent);
   --glass: rgba(255, 255, 255, 0.03);
   --button-secondary-bg: rgba(255, 255, 255, 0.06);
   --button-secondary-border: rgba(255, 255, 255, 0.12);
@@ -18,7 +18,7 @@
     --card: #ffffff;
     --muted: #556070;
     --text: #0b1b2b;
-    --accent: #0ea5ff;
+    --accent: #34d399;
     --glass: rgba(11, 27, 43, 0.03);
     --button-secondary-bg: rgba(11, 27, 43, 0.06);
     --button-secondary-border: rgba(11, 27, 43, 0.14);
@@ -267,7 +267,7 @@ body,
 }
 
 .trend-falling {
-  color: var(--success);
+  color: var(--accent);
 }
 
 .trend-neutral {

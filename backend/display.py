@@ -30,10 +30,9 @@ from luma.lcd.device import ili9341
 WIDTH = 320
 HEIGHT = 240
 
-COLOR_NORMAL = "#37B6FF"   # webapp --accent
+COLOR_NORMAL = "#22C55E"   # webapp --accent
 COLOR_HIGH = "#FF7B72"     # .co2-high
 COLOR_VERY_HIGH = "#FF3B30"  # .co2-very-high
-COLOR_GOOD = "#34D399"
 COLOR_TEXT = "#E6EEF8"
 COLOR_MUTED = "#94A3B8"
 COLOR_DIVIDER = "#8792A2"
@@ -103,7 +102,7 @@ def trend_color(trend: Optional[Co2Trend]) -> str:
         return COLOR_MUTED
     if trend.direction == "rising":
         return COLOR_HIGH
-    return COLOR_GOOD
+    return COLOR_NORMAL
 
 
 def trend_arrow(trend: Optional[Co2Trend]) -> str:
