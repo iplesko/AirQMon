@@ -9,20 +9,20 @@
   --glass: rgba(255, 255, 255, 0.03);
   --button-secondary-bg: rgba(255, 255, 255, 0.06);
   --button-secondary-border: rgba(255, 255, 255, 0.12);
+  color-scheme: dark;
 }
 
-/* Light theme overrides */
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f6f8fb;
-    --card: #ffffff;
-    --muted: #556070;
-    --text: #0b1b2b;
-    --accent: #34d399;
-    --glass: rgba(11, 27, 43, 0.03);
-    --button-secondary-bg: rgba(11, 27, 43, 0.06);
-    --button-secondary-border: rgba(11, 27, 43, 0.14);
-  }
+:root[data-theme='light'] {
+  --bg: #f6f8fb;
+  --bg2: #ffffff;
+  --card: #ffffff;
+  --muted: #556070;
+  --text: #0b1b2b;
+  --accent: #34d399;
+  --glass: rgba(11, 27, 43, 0.03);
+  --button-secondary-bg: rgba(11, 27, 43, 0.06);
+  --button-secondary-border: rgba(11, 27, 43, 0.14);
+  color-scheme: light;
 }
 
 html,

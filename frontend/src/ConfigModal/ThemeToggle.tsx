@@ -5,6 +5,11 @@ type ThemeToggleProps = {
 
 const THEME_STORAGE_KEY = 'theme'
 
+function setDocumentTheme(dark: boolean) {
+  if (typeof document === 'undefined') return
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+}
+
 export function getInitialDarkMode(): boolean {
   try {
     return localStorage.getItem(THEME_STORAGE_KEY) !== 'light'
@@ -13,37 +18,15 @@ export function getInitialDarkMode(): boolean {
   }
 }
 
-function applyThemeVars(dark: boolean) {
-  const root = document.documentElement.style
-  if (dark) {
-    root.setProperty('--bg', '#0f1723')
-    root.setProperty('--card', '#0b1220')
-    root.setProperty('--muted', '#94a3b8')
-    root.setProperty('--text', '#e6eef8')
-    root.setProperty('--accent', '#22c55e')
-    root.setProperty('--glass', 'rgba(255,255,255,0.03)')
-    root.setProperty('--button-secondary-bg', 'rgba(255,255,255,0.06)')
-    root.setProperty('--button-secondary-border', 'rgba(255,255,255,0.12)')
-    root.setProperty('--bg2', '#071022')
-    return
-  }
-
-  root.setProperty('--bg', '#f6f8fb')
-  root.setProperty('--card', '#ffffff')
-  root.setProperty('--muted', '#556070')
-  root.setProperty('--text', '#0b1b2b')
-  root.setProperty('--accent', '#22c55e')
-  root.setProperty('--glass', 'rgba(11,27,43,0.03)')
-  root.setProperty('--button-secondary-bg', 'rgba(11,27,43,0.06)')
-  root.setProperty('--button-secondary-border', 'rgba(11,27,43,0.14)')
-  root.setProperty('--bg2', '#ffffff')
+export function initializeThemePreference() {
+  setDocumentTheme(getInitialDarkMode())
 }
 
 export function applyThemePreference(dark: boolean) {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, dark ? 'dark' : 'light')
   } catch {}
-  applyThemeVars(dark)
+  setDocumentTheme(dark)
 }
 
 export default function ThemeToggle({ dark, onToggle }: ThemeToggleProps) {
