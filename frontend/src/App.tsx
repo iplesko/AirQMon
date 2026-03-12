@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Brand from './Brand'
 import CurrentReading from './CurrentReading'
+import { fetchLatestMeasurement, fetchMeasurementRange } from './api'
 import ConfigModal from './ConfigModal/ConfigModal'
 import MeasurementChart from './MeasurementChart'
 import RangeControls, { getInitialRangeSeconds } from './RangeControls'
@@ -52,13 +53,8 @@ export default function App() {
 
   const fetchLatest = useCallback(async () => {
     try {
-      const res = await fetch('/api/latest')
-      if (!res.ok) {
-        setLatest(null)
-        return
-      }
-      const payload = await res.json()
-      setLatest(payload)
+      const measurement = await fetchLatestMeasurement()
+      setLatest(measurement)
     } catch (e) {
       console.error('fetchLatest', e)
       setLatest(null)
@@ -73,18 +69,12 @@ export default function App() {
         const previousTs = lastFetchTsRef.current
         const shouldForceFull = forceFull || previousTs === null
         const start = shouldForceFull ? windowStart : Math.max(previousTs + 1, windowStart)
-        const query = new URLSearchParams({ start: String(start), end: String(end) })
-        if (useLimitedPoints) {
-          query.set('points', String(MOBILE_PORTRAIT_POINTS))
-        }
-
-        const res = await fetch(`/api/data?${query.toString()}`)
-        if (!res.ok) return
-
-        const payload = await res.json()
-        if (!payload || !Array.isArray(payload.data)) return
-
-        const incoming = payload.data as Measurement[]
+        const incoming = await fetchMeasurementRange({
+          start,
+          end,
+          points: useLimitedPoints ? MOBILE_PORTRAIT_POINTS : undefined,
+        })
+        if (incoming === null) return
 
         if (shouldForceFull) {
           setData(incoming)

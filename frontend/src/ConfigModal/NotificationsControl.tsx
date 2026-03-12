@@ -1,4 +1,10 @@
 import { useEffect, useState } from 'react'
+import {
+  fetchPushPublicKey,
+  getErrorMessage,
+  subscribePushSubscription,
+  unsubscribePushSubscription,
+} from '../api'
 import { registerAirqmonServiceWorker } from '../serviceWorker'
 
 type NotificationMode = 'enabled' | 'disabled' | 'unsupported'
@@ -19,15 +25,6 @@ function getNotificationsSupported(): boolean {
     'PushManager' in window &&
     'Notification' in window
   )
-}
-
-async function getApiErrorMessage(response: Response): Promise<string> {
-  const payload = (await response.json().catch(() => null)) as { detail?: string } | null
-  return payload?.detail ?? `Request failed (${response.status})`
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
 }
 
 export default function NotificationsControl() {
@@ -97,15 +94,7 @@ export default function NotificationsControl() {
 
       const registration = await registerAirqmonServiceWorker()
 
-      const keyResponse = await fetch('/api/push/public-key')
-      if (!keyResponse.ok) {
-        throw new Error(await getApiErrorMessage(keyResponse))
-      }
-      const keyPayload = (await keyResponse.json()) as { public_key?: string }
-      const publicKey = (keyPayload.public_key ?? '').trim()
-      if (!publicKey) {
-        throw new Error('Server did not return a VAPID public key')
-      }
+      const publicKey = await fetchPushPublicKey()
 
       let subscription = await registration.pushManager.getSubscription()
       if (!subscription) {
@@ -115,14 +104,7 @@ export default function NotificationsControl() {
         })
       }
 
-      const subscribeResponse = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription),
-      })
-      if (!subscribeResponse.ok) {
-        throw new Error(await getApiErrorMessage(subscribeResponse))
-      }
+      await subscribePushSubscription(subscription)
 
       setNotificationMode('enabled')
     } catch (error) {
@@ -151,14 +133,10 @@ export default function NotificationsControl() {
 
       await subscription.unsubscribe()
 
-      const unsubscribeResponse = await fetch('/api/push/unsubscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: subscription.endpoint }),
-      })
+      const removed = await unsubscribePushSubscription(subscription.endpoint)
 
       setNotificationMode('disabled')
-      if (!unsubscribeResponse.ok) {
+      if (!removed) {
         setErrorMessage('Notifications were disabled in the browser, but backend cleanup failed.')
       }
     } catch (error) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MouseEvent } from 'react'
+import { fetchConfig, getErrorMessage, updateConfig } from '../api'
 import ThemeToggle from './ThemeToggle'
 import type { AppConfig } from '../types'
 import NotificationsControl from './NotificationsControl'
@@ -30,15 +31,6 @@ function configToForm(config: AppConfig): ConfigForm {
   }
 }
 
-async function getApiErrorMessage(response: Response): Promise<string> {
-  const payload = (await response.json().catch(() => null)) as { detail?: string } | null
-  return payload?.detail ?? `Request failed (${response.status})`
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
-
 export default function ConfigModal({ open, onClose, dark, onToggleTheme }: ConfigModalProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -62,11 +54,7 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
       setErrorMessage(null)
       setSaveStatus(null)
       try {
-        const res = await fetch('/api/config')
-        if (!res.ok) {
-          throw new Error(await getApiErrorMessage(res))
-        }
-        const payload = (await res.json()) as AppConfig
+        const payload = await fetchConfig()
         if (!canceled) {
           setForm(configToForm(payload))
         }
@@ -132,21 +120,13 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
     setErrorMessage(null)
     setSaveStatus(null)
     try {
-      const res = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          co2_high: co2High,
-          co2_clear: co2Clear,
-          cooldown_seconds: cooldownSeconds,
-          display_brightness: displayBrightness,
-          night_mode_enabled: form.night_mode_enabled,
-        }),
+      const updated = await updateConfig({
+        co2_high: co2High,
+        co2_clear: co2Clear,
+        cooldown_seconds: cooldownSeconds,
+        display_brightness: displayBrightness,
+        night_mode_enabled: form.night_mode_enabled,
       })
-      if (!res.ok) {
-        throw new Error(await getApiErrorMessage(res))
-      }
-      const updated = (await res.json()) as AppConfig
       setForm(configToForm(updated))
       onClose()
     } catch (error) {
