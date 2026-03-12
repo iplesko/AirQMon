@@ -109,18 +109,17 @@ function getChartOptions(isMobile: boolean, isNarrowMobile: boolean, dark: boole
 export default function MeasurementChart({ data, dark }: MeasurementChartProps) {
   const [isMobile, setIsMobile] = useState<boolean>(getInitialIsMobile)
   const [isNarrowMobile, setIsNarrowMobile] = useState<boolean>(getInitialIsNarrowMobile)
-  const chartRef = useRef<any>(null)
+  const chartRef = useRef<ChartJS<'line'> | null>(null)
 
   useEffect(() => {
     const handler = () => {
       setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT)
       setIsNarrowMobile(window.innerWidth <= NARROW_MOBILE_BREAKPOINT)
       requestAnimationFrame(() => {
-        try {
-          chartRef.current?.chartInstance?.resize?.()
-          chartRef.current?.resize?.()
-          chartRef.current?.update?.()
-        } catch {}
+        const chart = chartRef.current
+        if (!chart) return
+        chart.resize()
+        chart.update('none')
       })
     }
 

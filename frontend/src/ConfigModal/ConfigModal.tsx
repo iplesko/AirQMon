@@ -35,7 +35,6 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [form, setForm] = useState<ConfigForm>({
     co2_high: '',
     co2_clear: '',
@@ -52,7 +51,6 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
     const loadConfig = async () => {
       setLoading(true)
       setErrorMessage(null)
-      setSaveStatus(null)
       try {
         const payload = await fetchConfig()
         if (!canceled) {
@@ -118,7 +116,6 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
 
     setSaving(true)
     setErrorMessage(null)
-    setSaveStatus(null)
     try {
       const updated = await updateConfig({
         co2_high: co2High,
@@ -264,7 +261,6 @@ export default function ConfigModal({ open, onClose, dark, onToggleTheme }: Conf
                 Log out
               </button>
               <div className="config-actions-right">
-                {saveStatus ? <div className="config-copy-status">{saveStatus}</div> : null}
                 <button className="btn" onClick={handleSave} disabled={saving}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>

@@ -192,31 +192,6 @@ def best_fit_font(text: str, max_w: int, max_h: int) -> ImageFont.FreeTypeFont:
     return best
 
 
-def draw_scaled_fallback_text(
-    img: Image.Image,
-    text: str,
-    color: str,
-    max_w: int,
-    max_h: int,
-) -> None:
-    """Draw text with Pillow bitmap font and scale it up when TTF fonts are unavailable."""
-    base_font = ImageFont.load_default()
-    bbox = base_font.getbbox(text)
-    base_w = max(1, bbox[2] - bbox[0])
-    base_h = max(1, bbox[3] - bbox[1])
-    scale = max(1, min(max_w // base_w, max_h // base_h))
-
-    mask = Image.new("L", (base_w, base_h), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.text((-bbox[0], -bbox[1]), text, font=base_font, fill=255)
-    scaled = mask.resize((base_w * scale, base_h * scale), Image.Resampling.NEAREST)
-
-    color_img = Image.new("RGB", scaled.size, color)
-    x = (img.width - scaled.width) // 2
-    y = (img.height - scaled.height) // 2
-    img.paste(color_img, (x, y), scaled)
-
-
 def draw_centered_text(
     draw: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
