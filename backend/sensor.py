@@ -8,6 +8,7 @@ import time
 
 _device = None
 _has_scd4x = False
+TEMPERATURE_OFFSET_C = -4.0
 try:
     from scd4x import SCD4X
     _has_scd4x = True
@@ -42,7 +43,8 @@ def read_real():
     vals = _device.measure()
     # Accept tuples like (co2, temp, rh, ...)
     co2 = float(vals[0])
-    temp = float(vals[1])
+    # Apply a fixed calibration correction for the installed sensor mount.
+    temp = float(vals[1]) + TEMPERATURE_OFFSET_C
     hum = float(vals[2])
     return (co2, temp, hum)
 
