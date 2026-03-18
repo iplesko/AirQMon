@@ -1,6 +1,6 @@
 .vscode/
 
-backend/__pycache__/
+__pycache__/
 backend/data.db
 backend/alerter.env
 backend/.env

@@ -2,17 +2,22 @@
 
 ## Overview
 
-The backend has two processes:
+The backend has four runtime processes:
 
 - `collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
 - `server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
 - `alerter.py`: watches new measurements in SQLite and sends Web Push alerts (VAPID) when CO2 is high.
+- `display.py`: compatibility entrypoint for the local SPI display app in `display_app/`.
 
 Tested hardware setup:
 
 - Raspberry Pi Zero 2 W
 - DFRobot SEN0536 (SCD41 infrared CO2 sensor)
-- I2C connection via Raspberry Pi GPIO pins
+- Waveshare 2.4" IPS TFT LCD module (240x320, SPI, ILI9341 controller)
+- Grove Touch Sensor (capacitive touch button)
+- Sensor uses I2C GPIO pins
+- Display uses SPI GPIO pins plus PWM/control GPIOs
+- Touch button uses a single GPIO input and switches display layouts locally
 
 ## Components
 
@@ -59,6 +64,19 @@ CLI options (selected):
 
 - `--db`: SQLite file path (default: `backend/data.db`)
 - `--poll-interval`: seconds between DB polls (default: `5`)
+
+### Local Display (`display.py`, `display_app/`)
+
+- Reads the latest stored measurement plus trend data from SQLite.
+- Renders the Waveshare SPI display locally on the Raspberry Pi.
+- Supports multiple on-device layouts.
+- Uses the Grove Touch Sensor on `GPIO24` (physical pin `18`) to switch layouts.
+- Applies configurable display brightness and optional night mode.
+
+CLI options:
+
+- `--db`: SQLite file path (default: `backend/data.db`)
+- `--interval`: refresh interval in seconds (default: `5.0`)
 
 ## Requirements
 
@@ -128,6 +146,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Touch button wiring used by the display app:
+
+- Grove Touch Sensor `SIG` -> Raspberry Pi `GPIO24` (physical pin `18`)
+- Grove Touch Sensor `VCC` -> Raspberry Pi `3.3V`
+- Grove Touch Sensor `GND` -> Raspberry Pi `GND`
+- The second Grove pin (`NC` / white wire) is unused
+
 ## Local Development
 
 ### 1. Run the Collector
@@ -170,6 +195,16 @@ Optional custom settings:
 python alerter.py --db ./data.db --poll-interval 5
 ```
 
+### 4. Run the Local Display
+
+On the Raspberry Pi with the SPI display and touch sensor connected:
+
+```bash
+cd backend
+source venv/bin/activate
+python display.py --db ./data.db --interval 5
+```
+
 ## Run as systemd Services (Linux / Raspberry Pi)
 
 The repository includes:
@@ -196,7 +231,7 @@ The shipped units assume:
 - working directory: `/home/admin/airqmon/backend`
 - python binary: `/home/admin/airqmon/backend/venv/bin/python`
 
-If your setup differs, edit both service files first.
+If your setup differs, edit the relevant service files first.
 Both web and alerter services load environment variables from `/home/admin/airqmon/backend/.env`.
 
 ### 3. Install and start services

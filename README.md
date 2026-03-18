@@ -10,12 +10,13 @@ Target hardware setup:
 - Raspberry Pi Zero 2 W
 - DFRobot SEN0536 (SCD41 infrared CO2 sensor)
 - Waveshare 2.4" IPS TFT LCD module (240x320, SPI, 65K RGB, SKU 18366 / ILI9341 controller)
-- Sensor uses I2C GPIO pins; display uses SPI GPIO pins (3.3V logic)
+- Grove Touch Sensor (capacitive touch button) for switching local display layouts
+- Sensor uses I2C GPIO pins; display uses SPI GPIO pins; touch sensor uses one GPIO input (3.3V logic)
 
 ## What the Applications Do
 
 ### Backend (`backend/`)
-The backend contains two runtime pieces:
+The backend contains several runtime pieces:
 
 - `collector.py`
   - Polls the sensor on an interval (default: 10 seconds).
@@ -33,7 +34,14 @@ The backend contains two runtime pieces:
   - Exposes API endpoints:
     - `GET /api/latest`: latest measurement.
     - `GET /api/data`: time-range query with optional point limiting.
+    - `GET /api/config` and `PUT /api/config`: runtime alert/display settings.
+    - Web Push subscription endpoints for browser notifications.
   - Serves built frontend static files from `frontend/dist` when present.
+
+- `display.py`
+  - Renders the local SPI display from stored measurements.
+  - Supports multiple on-device layouts.
+  - Uses the touch button to switch layouts directly on the Raspberry Pi.
 
 ### Frontend (`frontend/`)
 The frontend dashboard:
@@ -42,16 +50,19 @@ The frontend dashboard:
 - Shows the current CO2/temperature/humidity values.
 - Renders historical line charts (CO2, temperature, humidity).
 - Supports selectable time ranges and a mobile-friendly reduced-points mode.
+- Includes a Config modal for alert thresholds, display brightness, night mode, theme selection, and browser push notifications.
 
 ## How It Fits Together
 
 1. The collector continuously writes sensor readings into SQLite.
-2. The API reads from SQLite and serves measurement data.
-3. The frontend calls the API and visualizes the results.
+2. The API reads from SQLite and serves measurement data plus runtime configuration.
+3. The frontend calls the API, visualizes the results, and manages browser notification subscriptions.
+4. The local SPI display reads the same stored measurements and lets you switch layouts with the touch button.
 
 ## Project Layout
 
 - `backend/` Python collector + FastAPI API + systemd units
+- `backend/display_app/` local display package (data prep, layouts, button handling, coordinator)
 - `frontend/` React/Vite UI
 - `.gitignore` repository ignore rules
 

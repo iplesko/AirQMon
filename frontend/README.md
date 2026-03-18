@@ -3,7 +3,17 @@
 ## Overview
 
 The frontend is a React + Vite single-page application written in TypeScript.
-It fetches measurements from the backend API (`/api/latest` and `/api/data`) and visualizes them with Chart.js.
+It fetches measurements from the backend API and visualizes them with Chart.js.
+
+Current frontend features:
+
+- Current CO2, temperature, and humidity display
+- Historical charts with selectable time ranges
+- Point-limited mobile portrait queries for lighter chart payloads
+- Config modal for alert thresholds, display brightness, and night mode
+- Browser push notification enable/disable controls
+- Theme toggle
+- PWA install support
 
 ## Access Control Assumption
 
@@ -46,7 +56,11 @@ npm run dev
 
 ## API Proxy
 
-The frontend is configured to proxy `/api` to `http://localhost:8000` during development (see `vite.config.ts`).
+The frontend proxies `/api` during development.
+
+- Default target: `http://localhost:8000`
+- Override with `DEV_API_PROXY_TARGET`
+- See `vite.config.ts`
 
 ## PWA
 
