@@ -14,9 +14,14 @@ from co2_trend import (
 from db import latest, range_query
 
 COLOR_NORMAL = "#22C55E"
+COLOR_AVERAGE = "#16A34A"
+COLOR_WARNING = "#F59E0B"
 COLOR_HIGH = "#FF7B72"
-COLOR_VERY_HIGH = "#FF3B30"
 COLOR_MUTED = "#94A3B8"
+CO2_FACE_HAPPY = "happy"
+CO2_FACE_SMILE = "smile"
+CO2_FACE_NEUTRAL = "neutral"
+CO2_FACE_SAD = "sad"
 
 
 @dataclass(frozen=True)
@@ -31,20 +36,35 @@ class DisplaySnapshot:
 class DisplayModel:
     co2_value: str
     co2_color: str
+    co2_face: Optional[str]
     trend_value: str
     trend_color: str
     temperature_value: str
     humidity_value: str
 
 
+def _co2_face(co2: Optional[float]) -> Optional[str]:
+    if co2 is None:
+        return None
+    if co2 <= 600:
+        return CO2_FACE_HAPPY
+    if co2 <= 1000:
+        return CO2_FACE_SMILE
+    if co2 <= 1500:
+        return CO2_FACE_NEUTRAL
+    return CO2_FACE_SAD
+
+
 def _co2_color(co2: Optional[float]) -> str:
     if co2 is None:
+        return COLOR_MUTED
+    if co2 <= 600:
         return COLOR_NORMAL
-    if co2 >= 2000:
-        return COLOR_VERY_HIGH
-    if co2 >= 1000:
-        return COLOR_HIGH
-    return COLOR_NORMAL
+    if co2 <= 1000:
+        return COLOR_AVERAGE
+    if co2 <= 1500:
+        return COLOR_WARNING
+    return COLOR_HIGH
 
 
 def _trend_color(trend: Optional[Co2Trend]) -> str:
@@ -112,6 +132,7 @@ def build_display_model(snapshot: DisplaySnapshot) -> DisplayModel:
     return DisplayModel(
         co2_value="--" if snapshot.co2 is None else f"{int(round(snapshot.co2))}",
         co2_color=_co2_color(snapshot.co2),
+        co2_face=_co2_face(snapshot.co2),
         trend_value=_format_trend(snapshot.trend),
         trend_color=_trend_color(snapshot.trend),
         temperature_value=_format_temperature(snapshot.temperature),
