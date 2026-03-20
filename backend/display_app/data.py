@@ -13,7 +13,7 @@ from co2_trend import (
 )
 from db import latest, range_query
 
-COLOR_NORMAL = "#22C55E"
+COLOR_NORMAL = "#1EDC11"
 COLOR_AVERAGE = "#16A34A"
 COLOR_WARNING = "#F59E0B"
 COLOR_HIGH = "#FF7B72"

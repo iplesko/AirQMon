@@ -27,7 +27,7 @@ FACE_EXPRESSIONS = (
     CO2_FACE_SMILE,
     CO2_FACE_HAPPY,
 )
-FACE_STRIP_RAISE = 32
+FACE_STRIP_RAISE = 16
 FACE_SUPERSAMPLE = 4
 FACE_SPECS = {
     CO2_FACE_SAD: {"mouth_kind": "arc", "mouth_box": (0.27, 0.56, 0.73, 0.83), "mouth_angles": (200, 340)},
