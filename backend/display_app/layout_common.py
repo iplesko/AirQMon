@@ -20,8 +20,7 @@ CO2_LABEL_TEXT = "CO2 ppm"
 CO2_LABEL_X = 10
 CO2_LABEL_Y = 6
 LAYOUT_STANDARD = "standard"
-LAYOUT_CO2_FACES = "co2_faces"
-LAYOUT_CO2_ONLY = LAYOUT_CO2_FACES
+LAYOUT_FACES = "faces"
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:

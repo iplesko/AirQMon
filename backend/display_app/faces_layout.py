@@ -5,16 +5,16 @@ from functools import lru_cache
 from PIL import Image, ImageDraw
 
 from .data import (
-    CO2_FACE_HAPPY,
-    CO2_FACE_NEUTRAL,
-    CO2_FACE_SAD,
-    CO2_FACE_SMILE,
+    FACE_HAPPY,
+    FACE_NEUTRAL,
+    FACE_SAD,
+    FACE_SMILE,
     DisplayModel,
 )
 from .layout_common import (
     BACKGROUND,
     COLOR_MUTED,
-    LAYOUT_CO2_FACES,
+    LAYOUT_FACES,
     DisplayLayout,
     co2_value_box,
     draw_value,
@@ -22,18 +22,18 @@ from .layout_common import (
 )
 
 FACE_EXPRESSIONS = (
-    CO2_FACE_SAD,
-    CO2_FACE_NEUTRAL,
-    CO2_FACE_SMILE,
-    CO2_FACE_HAPPY,
+    FACE_SAD,
+    FACE_NEUTRAL,
+    FACE_SMILE,
+    FACE_HAPPY,
 )
 FACE_STRIP_RAISE = 16
 FACE_SUPERSAMPLE = 4
 FACE_SPECS = {
-    CO2_FACE_SAD: {"mouth_kind": "arc", "mouth_box": (0.27, 0.56, 0.73, 0.83), "mouth_angles": (200, 340)},
-    CO2_FACE_NEUTRAL: {"mouth_kind": "line", "mouth_box": (0.31, 0.70, 0.69, 0.70)},
-    CO2_FACE_SMILE: {"mouth_kind": "arc", "mouth_box": (0.27, 0.47, 0.73, 0.74), "mouth_angles": (20, 160)},
-    CO2_FACE_HAPPY: {"mouth_kind": "chord", "mouth_box": (0.30, 0.43, 0.70, 0.72), "mouth_angles": (0, 180)},
+    FACE_SAD: {"mouth_kind": "arc", "mouth_box": (0.27, 0.56, 0.73, 0.83), "mouth_angles": (200, 340)},
+    FACE_NEUTRAL: {"mouth_kind": "line", "mouth_box": (0.31, 0.70, 0.69, 0.70)},
+    FACE_SMILE: {"mouth_kind": "arc", "mouth_box": (0.27, 0.47, 0.73, 0.74), "mouth_angles": (20, 160)},
+    FACE_HAPPY: {"mouth_kind": "chord", "mouth_box": (0.30, 0.43, 0.70, 0.72), "mouth_angles": (0, 180)},
 }
 
 
@@ -124,8 +124,8 @@ def draw_face_strip(img: Image.Image, model: DisplayModel, box: tuple[int, int, 
         img.paste(icon, (icon_x, icon_y), icon)
 
 
-class CO2FacesDisplayLayout(DisplayLayout):
-    name = LAYOUT_CO2_FACES
+class FacesDisplayLayout(DisplayLayout):
+    name = LAYOUT_FACES
 
     def render(self, model: DisplayModel, size: tuple[int, int]) -> Image.Image:
         width, height = size
@@ -135,6 +135,3 @@ class CO2FacesDisplayLayout(DisplayLayout):
         draw_value(draw, co2_value_box(draw, size), model.co2_value, model.co2_color)
         draw_face_strip(img, model, (0, max(0, top_height - FACE_STRIP_RAISE), width - 1, height - 1))
         return img
-
-
-Co2OnlyDisplayLayout = CO2FacesDisplayLayout

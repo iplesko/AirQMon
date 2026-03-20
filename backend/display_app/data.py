@@ -18,10 +18,10 @@ COLOR_AVERAGE = "#16A34A"
 COLOR_WARNING = "#F59E0B"
 COLOR_HIGH = "#FF7B72"
 COLOR_MUTED = "#94A3B8"
-CO2_FACE_HAPPY = "happy"
-CO2_FACE_SMILE = "smile"
-CO2_FACE_NEUTRAL = "neutral"
-CO2_FACE_SAD = "sad"
+FACE_HAPPY = "happy"
+FACE_SMILE = "smile"
+FACE_NEUTRAL = "neutral"
+FACE_SAD = "sad"
 
 
 @dataclass(frozen=True)
@@ -47,12 +47,12 @@ def _co2_face(co2: Optional[float]) -> Optional[str]:
     if co2 is None:
         return None
     if co2 <= 600:
-        return CO2_FACE_HAPPY
+        return FACE_HAPPY
     if co2 <= 1000:
-        return CO2_FACE_SMILE
+        return FACE_SMILE
     if co2 <= 1500:
-        return CO2_FACE_NEUTRAL
-    return CO2_FACE_SAD
+        return FACE_NEUTRAL
+    return FACE_SAD
 
 
 def _co2_color(co2: Optional[float]) -> str:
