@@ -280,6 +280,9 @@ sudo systemctl enable --now airqmon-alerter.service
 sudo systemctl enable --now airqmon-display.service
 ```
 
+`airqmon-display.service` drives `GPIO18` low in `ExecStopPost` to turn off the TFT backlight when the display service stops, including during shutdown.
+If your backlight is wired with inverted logic, change `dl` to `dh` in `backend/airqmon-display.service` before installing it.
+
 ### 4. Verify status and logs
 
 ```bash

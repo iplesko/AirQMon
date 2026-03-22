@@ -7,6 +7,7 @@ Type=simple
 User=admin
 WorkingDirectory=/home/admin/airqmon/backend
 ExecStart=/home/admin/airqmon/backend/venv/bin/python /home/admin/airqmon/backend/display.py --db /home/admin/airqmon/backend/data.db --interval 5
+ExecStopPost=+/usr/bin/pinctrl set 18 op dl
 Restart=on-failure
 
 [Install]
