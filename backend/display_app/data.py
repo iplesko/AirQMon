@@ -17,11 +17,14 @@ COLOR_NORMAL = "#1EDC11"
 COLOR_AVERAGE = "#16A34A"
 COLOR_WARNING = "#F59E0B"
 COLOR_HIGH = "#FF7B72"
+COLOR_AWFUL = "#FF3B30"
 COLOR_MUTED = "#94A3B8"
-FACE_HAPPY = "happy"
-FACE_SMILE = "smile"
-FACE_NEUTRAL = "neutral"
-FACE_SAD = "sad"
+
+AIR_QUALITY_AWFUL = "awful"
+AIR_QUALITY_BAD = "bad"
+AIR_QUALITY_AVERAGE = "average"
+AIR_QUALITY_GOOD = "good"
+AIR_QUALITY_AMAZING = "amazing"
 
 
 @dataclass(frozen=True)
@@ -36,23 +39,25 @@ class DisplaySnapshot:
 class DisplayModel:
     co2_value: str
     co2_color: str
-    co2_face: Optional[str]
+    co2_quality: Optional[str]
     trend_value: str
     trend_color: str
     temperature_value: str
     humidity_value: str
 
 
-def _co2_face(co2: Optional[float]) -> Optional[str]:
+def _co2_quality(co2: Optional[float]) -> Optional[str]:
     if co2 is None:
         return None
     if co2 <= 600:
-        return FACE_HAPPY
+        return AIR_QUALITY_AMAZING
     if co2 <= 1000:
-        return FACE_SMILE
+        return AIR_QUALITY_GOOD
     if co2 <= 1500:
-        return FACE_NEUTRAL
-    return FACE_SAD
+        return AIR_QUALITY_AVERAGE
+    if co2 < 2000:
+        return AIR_QUALITY_BAD
+    return AIR_QUALITY_AWFUL
 
 
 def _co2_color(co2: Optional[float]) -> str:
@@ -64,7 +69,9 @@ def _co2_color(co2: Optional[float]) -> str:
         return COLOR_AVERAGE
     if co2 <= 1500:
         return COLOR_WARNING
-    return COLOR_HIGH
+    if co2 < 2000:
+        return COLOR_HIGH
+    return COLOR_AWFUL
 
 
 def _trend_color(trend: Optional[Co2Trend]) -> str:
@@ -132,7 +139,7 @@ def build_display_model(snapshot: DisplaySnapshot) -> DisplayModel:
     return DisplayModel(
         co2_value="--" if snapshot.co2 is None else f"{int(round(snapshot.co2))}",
         co2_color=_co2_color(snapshot.co2),
-        co2_face=_co2_face(snapshot.co2),
+        co2_quality=_co2_quality(snapshot.co2),
         trend_value=_format_trend(snapshot.trend),
         trend_color=_trend_color(snapshot.trend),
         temperature_value=_format_temperature(snapshot.temperature),

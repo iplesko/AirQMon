@@ -131,6 +131,22 @@ sudo apt update
 sudo apt install -y build-essential python3-dev fontconfig fonts-dejavu-core
 ```
 
+Install the monochrome Noto Emoji font used by the faces layout:
+
+```bash
+# On your development machine:
+# 1. Download the Noto Emoji family archive from:
+#    https://fonts.google.com/noto/specimen/Noto+Emoji
+# 2. Extract the archive.
+# 3. Upload either NotoEmoji-Regular.ttf or NotoEmoji[wght].ttf to the device.
+#    Example:
+#    scp NotoEmoji-Regular.ttf pi@raspberrypi.local:/tmp/NotoEmoji-Regular.ttf
+
+sudo mkdir -p /usr/local/share/fonts/truetype/noto
+sudo install -m 644 /tmp/NotoEmoji-Regular.ttf /usr/local/share/fonts/truetype/noto/NotoEmoji.ttf
+sudo fc-cache -f
+```
+
 Enable SPI in firmware config (required for `/dev/spidev0.0`):
 
 ```bash

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from .data import (
-    FACE_HAPPY,
-    FACE_NEUTRAL,
-    FACE_SAD,
-    FACE_SMILE,
+    AIR_QUALITY_AMAZING,
+    AIR_QUALITY_AWFUL,
+    AIR_QUALITY_AVERAGE,
+    AIR_QUALITY_BAD,
+    AIR_QUALITY_GOOD,
     DisplayModel,
 )
 from .layout_common import (
@@ -21,88 +22,63 @@ from .layout_common import (
     top_section_height,
 )
 
-FACE_EXPRESSIONS = (
-    FACE_SAD,
-    FACE_NEUTRAL,
-    FACE_SMILE,
-    FACE_HAPPY,
+AIR_QUALITY_LEVELS = (
+    AIR_QUALITY_AWFUL,
+    AIR_QUALITY_BAD,
+    AIR_QUALITY_AVERAGE,
+    AIR_QUALITY_GOOD,
+    AIR_QUALITY_AMAZING,
 )
+EMOJI_FONT_PATH = "/usr/local/share/fonts/truetype/noto/NotoEmoji.ttf"
 FACE_STRIP_RAISE = 16
+FACE_ICON_SIZE = 70
 FACE_SUPERSAMPLE = 4
-FACE_SPECS = {
-    FACE_SAD: {"mouth_kind": "arc", "mouth_box": (0.27, 0.56, 0.73, 0.83), "mouth_angles": (200, 340)},
-    FACE_NEUTRAL: {"mouth_kind": "line", "mouth_box": (0.31, 0.70, 0.69, 0.70)},
-    FACE_SMILE: {"mouth_kind": "arc", "mouth_box": (0.27, 0.47, 0.73, 0.74), "mouth_angles": (20, 160)},
-    FACE_HAPPY: {"mouth_kind": "chord", "mouth_box": (0.30, 0.43, 0.70, 0.72), "mouth_angles": (0, 180)},
+AIR_QUALITY_GLYPHS = {
+    AIR_QUALITY_AWFUL: "🤮",
+    AIR_QUALITY_BAD: "😥",
+    AIR_QUALITY_AVERAGE: "😬",
+    AIR_QUALITY_GOOD: "☺︎",
+    AIR_QUALITY_AMAZING: "🤩",
 }
 
+@lru_cache(maxsize=64)
+def load_emoji_font(size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(EMOJI_FONT_PATH, size=size)
 
-def _relative_box(size: int, box: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
-    x0, y0, x1, y1 = box
-    return (
-        int(round(x0 * size)),
-        int(round(y0 * size)),
-        int(round(x1 * size)),
-        int(round(y1 * size)),
-    )
+
+@lru_cache(maxsize=128)
+def best_fit_emoji_font(glyph: str, max_w: int, max_h: int) -> ImageFont.FreeTypeFont:
+    low = 12
+    high = max(12, max(max_w, max_h) * 2)
+    best = load_emoji_font(low)
+    while low <= high:
+        mid = (low + high) // 2
+        font = load_emoji_font(mid)
+        bbox = font.getbbox(glyph)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if width <= max_w and height <= max_h:
+            best = font
+            low = mid + 1
+        else:
+            high = mid - 1
+    return best
 
 
 @lru_cache(maxsize=64)
-def render_face_icon(size: int, expression: str, color: str) -> Image.Image:
+def render_face_icon(size: int, quality_level: str, color: str) -> Image.Image:
     canvas_size = max(24, size) * FACE_SUPERSAMPLE
     icon = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(icon)
-    stroke_width = max(4, canvas_size // 34)
-    feature_width = max(4, canvas_size // 28)
-    head_padding = int(round(canvas_size * 0.12))
-    head_box = (
-        head_padding,
-        head_padding,
-        canvas_size - head_padding - 1,
-        canvas_size - head_padding - 1,
-    )
-
-    draw.ellipse(head_box, outline=color, width=stroke_width)
-
-    eye_y = int(round(canvas_size * 0.40))
-    eye_radius_x = int(round(canvas_size * 0.055))
-    eye_radius_y = int(round(canvas_size * 0.075))
-    eye_centers = (
-        int(round(canvas_size * 0.37)),
-        int(round(canvas_size * 0.63)),
-    )
-    for eye_center_x in eye_centers:
-        draw.ellipse(
-            (
-                eye_center_x - eye_radius_x,
-                eye_y - eye_radius_y,
-                eye_center_x + eye_radius_x,
-                eye_y + eye_radius_y,
-            ),
-            fill=color,
-        )
-
-    spec = FACE_SPECS[expression]
-    if spec["mouth_kind"] == "line":
-        mouth_x0, mouth_y0, mouth_x1, mouth_y1 = _relative_box(canvas_size, spec["mouth_box"])
-        draw.line((mouth_x0, mouth_y0, mouth_x1, mouth_y1), fill=color, width=feature_width)
-    elif spec["mouth_kind"] == "chord":
-        draw.chord(
-            _relative_box(canvas_size, spec["mouth_box"]),
-            start=spec["mouth_angles"][0],
-            end=spec["mouth_angles"][1],
-            fill=color,
-            outline=color,
-            width=feature_width,
-        )
-    else:
-        draw.arc(
-            _relative_box(canvas_size, spec["mouth_box"]),
-            start=spec["mouth_angles"][0],
-            end=spec["mouth_angles"][1],
-            fill=color,
-            width=feature_width,
-        )
+    padding = max(8, canvas_size // 10)
+    glyph = AIR_QUALITY_GLYPHS[quality_level]
+    font = best_fit_emoji_font(glyph, canvas_size - (padding * 2), canvas_size - (padding * 2))
+    bbox = draw.textbbox((0, 0), glyph, font=font)
+    glyph_w = bbox[2] - bbox[0]
+    glyph_h = bbox[3] - bbox[1]
+    glyph_x = ((canvas_size - glyph_w) // 2) - bbox[0]
+    glyph_y = ((canvas_size - glyph_h) // 2) - bbox[1]
+    draw.text((glyph_x, glyph_y), glyph, font=font, fill=color)
 
     return icon.resize((size, size), resample=Image.Resampling.LANCZOS)
 
@@ -111,16 +87,16 @@ def draw_face_strip(img: Image.Image, model: DisplayModel, box: tuple[int, int, 
     x0, y0, x1, y1 = box
     box_width = x1 - x0 + 1
     box_height = y1 - y0 + 1
-    cell_width = box_width / len(FACE_EXPRESSIONS)
-    face_size = max(24, min(int(cell_width) - 10, box_height - 10))
+    cell_width = box_width / len(AIR_QUALITY_LEVELS)
+    face_size = max(24, min(FACE_ICON_SIZE, box_height - 10))
 
-    for index, expression in enumerate(FACE_EXPRESSIONS):
+    for index, quality_level in enumerate(AIR_QUALITY_LEVELS):
         cell_x0 = x0 + int(round(index * cell_width))
         cell_x1 = x0 + int(round((index + 1) * cell_width)) - 1
         icon_x = cell_x0 + max(0, ((cell_x1 - cell_x0 + 1) - face_size) // 2)
         icon_y = y0 + max(0, (box_height - face_size) // 2)
-        icon_color = model.co2_color if model.co2_face == expression else COLOR_MUTED
-        icon = render_face_icon(face_size, expression, icon_color)
+        icon_color = model.co2_color if model.co2_quality == quality_level else COLOR_MUTED
+        icon = render_face_icon(face_size, quality_level, icon_color)
         img.paste(icon, (icon_x, icon_y), icon)
 
 
