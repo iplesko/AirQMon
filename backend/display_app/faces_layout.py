@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .assets import EMOJI_FONT_PATH as DEFAULT_EMOJI_FONT_PATH
 from .data import (
     AIR_QUALITY_AMAZING,
     AIR_QUALITY_AWFUL,
@@ -29,7 +30,7 @@ AIR_QUALITY_LEVELS = (
     AIR_QUALITY_GOOD,
     AIR_QUALITY_AMAZING,
 )
-EMOJI_FONT_PATH = "/usr/local/share/fonts/truetype/noto/NotoEmoji.ttf"
+EMOJI_FONT_PATH = DEFAULT_EMOJI_FONT_PATH
 FACE_STRIP_RAISE = 16
 FACE_ICON_SIZE = 70
 FACE_SUPERSAMPLE = 4

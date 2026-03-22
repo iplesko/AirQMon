@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .assets import TEXT_FONT_PATH
 from .data import DisplayModel
 
 BACKGROUND = "#000000"
@@ -11,7 +12,7 @@ COLOR_TEXT = "#E6EEF8"
 COLOR_MUTED = "#94A3B8"
 COLOR_DIVIDER = "#8792A2"
 COLOR_ERROR = "#FF7B72"
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_PATH = TEXT_FONT_PATH
 SECTION_DIVIDER_WIDTH = 2
 BOTTOM_LABEL_FONT_SIZE = 14
 BOTTOM_SECTION_HEIGHT_RATIO = 3

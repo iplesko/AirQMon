@@ -6,11 +6,10 @@ import sys
 import time
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
+from display_app.assets import BACKEND_DIR, EMOJI_FONT_PATH, TEXT_FONT_PATH
+
+BASE_DIR = BACKEND_DIR
 OUTPUT_DIR = BASE_DIR / "preview_out"
-TEXT_FONT_PATH = ASSETS_DIR / "DejaVuSans-Bold.ttf"
-EMOJI_FONT_PATH = ASSETS_DIR / "NotoEmoji-Regular.ttf"
 WIDTH = 320
 HEIGHT = 240
 LAYOUT_STANDARD = "standard"
@@ -20,7 +19,7 @@ LAYOUT_FACES = "faces"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render the display layouts to PNG files using fake readings.")
     parser.add_argument("--co2", type=float, required=True, help="CO2 value in ppm.")
-    parser.add_argument("--temperature", type=float, required=True, help="Temperature value in °C.")
+    parser.add_argument("--temperature", type=float, required=True, help="Temperature value in deg C.")
     parser.add_argument("--humidity", type=float, required=True, help="Humidity value in percent.")
     parser.add_argument(
         "--trend",
@@ -48,13 +47,13 @@ def load_runtime():
 
 
 def configure_fonts(faces_layout, layout_common) -> None:
-    if not TEXT_FONT_PATH.exists():
+    if not Path(TEXT_FONT_PATH).exists():
         raise FileNotFoundError(f"Missing bundled text font: {TEXT_FONT_PATH}")
-    if not EMOJI_FONT_PATH.exists():
+    if not Path(EMOJI_FONT_PATH).exists():
         raise FileNotFoundError(f"Missing bundled emoji font: {EMOJI_FONT_PATH}")
 
-    layout_common.FONT_PATH = str(TEXT_FONT_PATH)
-    faces_layout.EMOJI_FONT_PATH = str(EMOJI_FONT_PATH)
+    layout_common.FONT_PATH = TEXT_FONT_PATH
+    faces_layout.EMOJI_FONT_PATH = EMOJI_FONT_PATH
     faces_layout.load_emoji_font.cache_clear()
     faces_layout.best_fit_emoji_font.cache_clear()
     faces_layout.render_face_icon.cache_clear()
