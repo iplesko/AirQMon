@@ -6,7 +6,6 @@ from datetime import datetime
 import signal
 import sys
 import time
-from pathlib import Path
 from typing import Optional
 
 import RPi.GPIO as GPIO
@@ -15,6 +14,7 @@ from luma.lcd.device import ili9341
 
 from db import get_conn, init_db
 from display_control import DISPLAY_TOGGLE_SIGNAL, remove_display_pid, write_display_pid
+from paths import DEFAULT_DB_PATH
 from runtime_config import read_display_config
 
 from .data import DisplayModel, build_display_model, read_display_snapshot
@@ -38,15 +38,12 @@ DISPLAY_IDLE_POLL_SECONDS = 0.1
 
 
 def parse_args() -> argparse.Namespace:
-    repo_root = Path(__file__).resolve().parents[2]
-    default_db = repo_root / "backend" / "data.db"
-
     parser = argparse.ArgumentParser(
         description="Show CO2 with trend, temperature, and humidity on a Waveshare 2.4 inch SPI display."
     )
     parser.add_argument(
         "--db",
-        default=str(default_db),
+        default=str(DEFAULT_DB_PATH),
         help="Path to SQLite DB (default: backend/data.db)",
     )
     parser.add_argument(

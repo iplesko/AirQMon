@@ -17,14 +17,14 @@ from db import (
     range_query,
     upsert_push_subscription,
 )
+from paths import DEFAULT_DB_PATH, FRONTEND_DIST_DIR
 from runtime_config import RuntimeConfig, persist_runtime_config, read_runtime_config, validate_runtime_config
 
 APP = app = FastAPI()
 DEFAULT_POINTS = 500
 MAX_POINTS = 10000
 
-BASE_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(BASE_DIR, 'data.db')
+DB_PATH = os.getenv('AIRQMON_DB_PATH', str(DEFAULT_DB_PATH))
 
 conn = get_conn(DB_PATH)
 init_db(conn)
@@ -186,7 +186,6 @@ def sieve_evenly(rows, target_points: int):
 
 
 # Serve frontend static files from ../frontend/dist (mount after API routes so API works)
-dist_path = os.path.abspath(os.path.join(BASE_DIR, '..', 'frontend', 'dist'))
-if os.path.isdir(dist_path):
-    app.mount('/', StaticFiles(directory=dist_path, html=True), name='static')
+if FRONTEND_DIST_DIR.is_dir():
+    app.mount('/', StaticFiles(directory=str(FRONTEND_DIST_DIR), html=True), name='static')
 

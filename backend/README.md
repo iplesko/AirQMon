@@ -2,13 +2,18 @@
 
 ## Overview
 
+Backend layout:
+
+- `src/`: Python source code and bundled runtime assets
+- `ops/`: deployment scripts and `systemd` unit files
+
 The backend has five runtime processes:
 
-- `collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
-- `server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
-- `alerter.py`: watches new measurements in SQLite and sends Web Push alerts (VAPID) when CO2 is high.
-- `display.py`: compatibility entrypoint for the local SPI display app in `display_app/`.
-- `input.py`: owns the capacitive touch button, toggles display layouts, and powers off the Pi on a 5-second hold.
+- `src/collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
+- `src/server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
+- `src/alerter.py`: watches new measurements in SQLite and sends Web Push alerts (VAPID) when CO2 is high.
+- `src/display.py`: compatibility entrypoint for the local SPI display app in `src/display_app/`.
+- `src/input.py`: owns the capacitive touch button, toggles display layouts, and powers off the Pi on a 5-second hold.
 
 Tested hardware setup:
 
@@ -22,7 +27,7 @@ Tested hardware setup:
 
 ## Components
 
-### Data Collector (`collector.py`)
+### Data Collector (`src/collector.py`)
 
 - Reads from SCD4X (`scd4x` package) when available.
 - Falls back to simulated values if sensor/driver is unavailable.
@@ -34,7 +39,7 @@ CLI options:
 - `--db`: SQLite file path (default: `backend/data.db`)
 - `--interval`: collection interval in seconds (default: `10.0`)
 
-### API Server (`server.py`)
+### API Server (`src/server.py`)
 
 Endpoints:
 
@@ -54,7 +59,7 @@ Static serving:
 - If `frontend/dist` exists, the backend serves it at `/`.
 - If it does not exist, API routes still work, but no frontend static files are served.
 
-### Alert Worker (`alerter.py`)
+### Alert Worker (`src/alerter.py`)
 
 - Polls the same SQLite DB for newly inserted measurements.
 - Sends Web Push notifications when CO2 crosses a high threshold.
@@ -66,12 +71,12 @@ CLI options (selected):
 - `--db`: SQLite file path (default: `backend/data.db`)
 - `--poll-interval`: seconds between DB polls (default: `5`)
 
-### Local Display (`display.py`, `display_app/`)
+### Local Display (`src/display.py`, `src/display_app/`)
 
 - Reads the latest stored measurement plus trend data from SQLite.
 - Renders the Waveshare SPI display locally on the Raspberry Pi.
 - Supports multiple on-device layouts.
-- Receives local layout-toggle requests from `input.py`.
+- Receives local layout-toggle requests from `src/input.py`.
 - Applies configurable display brightness and optional night mode.
 
 CLI options:
@@ -79,7 +84,7 @@ CLI options:
 - `--db`: SQLite file path (default: `backend/data.db`)
 - `--interval`: refresh interval in seconds (default: `5.0`)
 
-### Local Input (`input.py`)
+### Local Input (`src/input.py`)
 
 - Owns the Grove Touch Sensor on `GPIO24` (physical pin `18`).
 - A touch switches layouts immediately by signaling the display process on button press.
@@ -92,7 +97,7 @@ CLI options:
 - `pip`
 - Linux systemd (only if running as services)
 
-Set VAPID environment variables before running `alerter.py` and `server.py`:
+Set VAPID environment variables before running `alerter.py` and `server.py` from `src/`:
 
 - `AIRQMON_VAPID_PUBLIC_KEY_FILE`
 - `AIRQMON_VAPID_PRIVATE_KEY_FILE`
@@ -141,7 +146,7 @@ sudo apt update
 sudo apt install -y build-essential python3-dev
 ```
 
-The display app uses the bundled fonts in `backend/assets/`, so no separate font installation is required on the device.
+The display app uses the bundled fonts in `backend/src/assets/`, so no separate font installation is required on the device.
 
 Enable SPI in firmware config (required for `/dev/spidev0.0`):
 
@@ -168,18 +173,20 @@ Touch button wiring used by the input service:
 
 ## Local Development
 
+The runtime entrypoints now live under `backend/src`, so run them as `python src/...` scripts. For the API server, use `uvicorn --app-dir src`.
+
 ### 1. Run the Collector
 
 ```bash
 cd backend
 source venv/bin/activate
-python collector.py
+python src/collector.py
 ```
 
 Optional custom settings:
 
 ```bash
-python collector.py --db ./data.db --interval 5
+python src/collector.py --db ./data.db --interval 5
 ```
 
 ### 2. Run the API Server
@@ -189,7 +196,7 @@ In a separate terminal:
 ```bash
 cd backend
 source venv/bin/activate
-uvicorn server:app --reload --host 0.0.0.0 --port 8000
+uvicorn --app-dir src server:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 3. Run the Alerter
@@ -199,13 +206,13 @@ In a third terminal:
 ```bash
 cd backend
 source venv/bin/activate
-python alerter.py
+python src/alerter.py
 ```
 
 Optional custom settings:
 
 ```bash
-python alerter.py --db ./data.db --poll-interval 5
+python src/alerter.py --db ./data.db --poll-interval 5
 ```
 
 ### 4. Run the Local Display
@@ -215,7 +222,7 @@ On the Raspberry Pi with the SPI display and touch sensor connected:
 ```bash
 cd backend
 source venv/bin/activate
-python display.py --db ./data.db --interval 5
+python src/display.py --db ./data.db --interval 5
 ```
 
 ### 5. Run the Local Input Service
@@ -224,7 +231,7 @@ In another terminal on the Raspberry Pi:
 
 ```bash
 cd backend
-sudo ./venv/bin/python input.py
+sudo ./venv/bin/python src/input.py
 ```
 
 ### 6. Preview the Display Locally
@@ -236,7 +243,7 @@ Example with fake readings:
 ```bash
 cd backend
 source venv/bin/activate
-python display_preview.py --co2 1750 --temperature 23.4 --humidity 46 --trend 3.8
+python src/display_preview.py --co2 1750 --temperature 23.4 --humidity 46 --trend 3.8
 ```
 
 This writes `display-preview-standard.png` and `display-preview-faces.png` into `backend/preview_out/`.
@@ -245,16 +252,16 @@ This writes `display-preview-standard.png` and `display-preview-faces.png` into 
 
 The repository includes:
 
-- `airqmon-collector.service`
-- `airqmon-web.service`
-- `airqmon-alerter.service`
-- `airqmon-display.service`
-- `airqmon-input.service`
-- `airqmon.target`
-- `airqmon-launch.sh`
-- `install_systemd.sh`
+- `ops/systemd/airqmon-collector.service`
+- `ops/systemd/airqmon-web.service`
+- `ops/systemd/airqmon-alerter.service`
+- `ops/systemd/airqmon-display.service`
+- `ops/systemd/airqmon-input.service`
+- `ops/systemd/airqmon.target`
+- `ops/airqmon-launch.sh`
+- `ops/install_systemd.sh`
 
-`airqmon-launch.sh` is an internal wrapper used by the systemd units. You normally should not run it manually; use `systemctl` on `airqmon.target` or the individual `airqmon-*.service` units instead.
+`ops/airqmon-launch.sh` is an internal wrapper used by the systemd units. You normally should not run it manually; use `systemctl` on `airqmon.target` or the individual `airqmon-*.service` units instead.
 
 ### 1. Prepare environment
 
@@ -281,7 +288,7 @@ The web and alerter processes still load their VAPID settings from `backend/.env
 From repository root:
 
 ```bash
-sudo bash backend/install_systemd.sh --start
+sudo bash backend/ops/install_systemd.sh --start
 ```
 
 This installer:
@@ -304,7 +311,7 @@ Default behavior:
 To customize users, paths, or intervals during install:
 
 ```bash
-sudo bash backend/install_systemd.sh \
+sudo bash backend/ops/install_systemd.sh \
   --app-user admin \
   --input-user root \
   --python /home/admin/airqmon/backend/venv/bin/python \
@@ -354,7 +361,7 @@ sudo journalctl -u airqmon-input -f
   - verify `--db` path is writable
 - Permission errors:
   - verify the generated service user exists and owns project files
-  - rerun `install_systemd.sh --app-user <user>` if needed
+  - rerun `ops/install_systemd.sh --app-user <user>` if needed
 - Port conflicts on `8000`:
   - change `AIRQMON_WEB_PORT` in `/etc/airqmon/airqmon.env`
   - restart `airqmon.target`

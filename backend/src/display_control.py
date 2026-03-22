@@ -5,7 +5,8 @@ import signal
 from pathlib import Path
 from typing import Optional
 
-DISPLAY_PID_FILE = Path(__file__).resolve().parent / "airqmon-display.pid"
+from paths import DISPLAY_PID_FILE
+
 DISPLAY_TOGGLE_SIGNAL = getattr(signal, "SIGUSR1", None)
 
 
@@ -61,7 +62,7 @@ def _pid_matches_display(pid: int) -> bool:
         return False
 
     args = [arg for arg in raw_cmdline.decode("utf-8", errors="ignore").split("\x00") if arg]
-    return any(Path(arg).name == "display.py" or arg == "display_app.main" for arg in args)
+    return any(Path(arg).name == "display.py" or arg in {"display", "display_app.main"} for arg in args)
 
 
 def request_layout_toggle(pid_file: Path | str | None = None) -> bool:

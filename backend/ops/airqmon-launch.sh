@@ -33,6 +33,7 @@ load_service_config() {
     require_var AIRQMON_PYTHON
     require_var AIRQMON_DB_PATH
 
+    AIRQMON_SRC_DIR="${AIRQMON_BACKEND_DIR}/src"
     AIRQMON_APP_ENV_FILE="${AIRQMON_APP_ENV_FILE:-${AIRQMON_BACKEND_DIR}/.env}"
     AIRQMON_WEB_HOST="${AIRQMON_WEB_HOST:-0.0.0.0}"
     AIRQMON_WEB_PORT="${AIRQMON_WEB_PORT:-8000}"
@@ -50,16 +51,22 @@ load_app_env() {
     load_env_file "$AIRQMON_APP_ENV_FILE"
 }
 
-run_python_script() {
-    local script_name="$1"
+configure_pythonpath() {
+    export PYTHONPATH="${AIRQMON_SRC_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+}
+
+run_python_module() {
+    local module_name="$1"
     shift
     cd "$AIRQMON_BACKEND_DIR"
-    exec "$AIRQMON_PYTHON" "$AIRQMON_BACKEND_DIR/$script_name" "$@"
+    configure_pythonpath
+    exec "$AIRQMON_PYTHON" -m "$module_name" "$@"
 }
 
 run_web() {
     load_app_env
     cd "$AIRQMON_BACKEND_DIR"
+    configure_pythonpath
     exec "$AIRQMON_PYTHON" -m uvicorn server:app --host "$AIRQMON_WEB_HOST" --port "$AIRQMON_WEB_PORT"
 }
 
@@ -83,20 +90,20 @@ main() {
 
     case "$service_name" in
         collector)
-            run_python_script collector.py --db "$AIRQMON_DB_PATH" --interval "$AIRQMON_POLL_INTERVAL"
+            run_python_module collector --db "$AIRQMON_DB_PATH" --interval "$AIRQMON_POLL_INTERVAL"
             ;;
         web)
             run_web
             ;;
         alerter)
             load_app_env
-            run_python_script alerter.py --db "$AIRQMON_DB_PATH" --poll-interval "$AIRQMON_POLL_INTERVAL"
+            run_python_module alerter --db "$AIRQMON_DB_PATH" --poll-interval "$AIRQMON_POLL_INTERVAL"
             ;;
         display)
-            run_python_script display.py --db "$AIRQMON_DB_PATH" --interval "$AIRQMON_POLL_INTERVAL"
+            run_python_module display --db "$AIRQMON_DB_PATH" --interval "$AIRQMON_POLL_INTERVAL"
             ;;
         input)
-            run_python_script input.py
+            run_python_module input
             ;;
         display-stop)
             display_stop

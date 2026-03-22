@@ -3,12 +3,12 @@
 import argparse
 from dataclasses import dataclass
 import json
-import os
 import signal
 import sys
 import time
 
 from db import get_conn, get_state, init_db, query_after_id, set_state
+from paths import DEFAULT_DB_PATH
 from push_notifications import build_high_payload, build_recovery_payload, send_push_to_all
 from runtime_config import AlertConfig, bool_from_state, ensure_alert_config, int_from_state
 
@@ -33,7 +33,7 @@ def handle_sig(signum, frame):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--db', default=os.path.join(os.path.dirname(__file__), 'data.db'))
+    parser.add_argument('--db', default=str(DEFAULT_DB_PATH))
     parser.add_argument('--poll-interval', type=float, default=DEFAULT_POLL_INTERVAL)
     return parser.parse_args()
 

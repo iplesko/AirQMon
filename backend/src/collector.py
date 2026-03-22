@@ -2,12 +2,12 @@
 """Data collector: reads sensor and writes to SQLite periodically."""
 import time
 import argparse
-import os
 import signal
 import sys
 from datetime import datetime
 
 from db import get_conn, init_db, insert_measurement, prune_old_measurements
+from paths import DEFAULT_DB_PATH
 from sensor import read
 
 running = True
@@ -19,7 +19,7 @@ def handle_sig(signum, frame):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--db', default=os.path.join(os.path.dirname(__file__), 'data.db'))
+    parser.add_argument('--db', default=str(DEFAULT_DB_PATH))
     parser.add_argument('--interval', type=float, default=10.0, help='seconds between measurements')
     args = parser.parse_args()
 

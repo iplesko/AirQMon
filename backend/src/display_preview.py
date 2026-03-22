@@ -6,10 +6,10 @@ import sys
 import time
 from pathlib import Path
 
-from display_app.assets import BACKEND_DIR, EMOJI_FONT_PATH, TEXT_FONT_PATH
+from display_app.assets import EMOJI_FONT_PATH, TEXT_FONT_PATH
+from paths import PREVIEW_OUTPUT_DIR
 
-BASE_DIR = BACKEND_DIR
-OUTPUT_DIR = BASE_DIR / "preview_out"
+OUTPUT_DIR = PREVIEW_OUTPUT_DIR
 WIDTH = 320
 HEIGHT = 240
 LAYOUT_STANDARD = "standard"

@@ -3,7 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$SCRIPT_DIR"
+OPS_DIR="$SCRIPT_DIR"
+BACKEND_DIR="$(cd -- "$OPS_DIR/.." && pwd)"
+SYSTEMD_SOURCE_DIR="$OPS_DIR/systemd"
 
 APP_USER="${SUDO_USER:-admin}"
 INPUT_USER="root"
@@ -23,7 +25,7 @@ START_TARGET="0"
 
 usage() {
     cat <<EOF
-Usage: sudo bash backend/install_systemd.sh [options]
+Usage: sudo bash backend/ops/install_systemd.sh [options]
 
 Options:
   --app-user USER                User for collector, web, alerter, and display
@@ -141,13 +143,14 @@ require_root() {
 
 validate_inputs() {
     command -v systemctl >/dev/null 2>&1 || fail "systemctl was not found. This installer is intended for systemd-based Linux systems."
-    [[ -f "$BACKEND_DIR/airqmon-launch.sh" ]] || fail "Missing launcher script at $BACKEND_DIR/airqmon-launch.sh"
-    [[ -f "$BACKEND_DIR/airqmon.target" ]] || fail "Missing target unit at $BACKEND_DIR/airqmon.target"
-    [[ -f "$BACKEND_DIR/airqmon-collector.service" ]] || fail "Missing collector unit in $BACKEND_DIR"
-    [[ -f "$BACKEND_DIR/airqmon-web.service" ]] || fail "Missing web unit in $BACKEND_DIR"
-    [[ -f "$BACKEND_DIR/airqmon-alerter.service" ]] || fail "Missing alerter unit in $BACKEND_DIR"
-    [[ -f "$BACKEND_DIR/airqmon-display.service" ]] || fail "Missing display unit in $BACKEND_DIR"
-    [[ -f "$BACKEND_DIR/airqmon-input.service" ]] || fail "Missing input unit in $BACKEND_DIR"
+    [[ -d "$BACKEND_DIR/src" ]] || fail "Missing source directory at $BACKEND_DIR/src"
+    [[ -f "$OPS_DIR/airqmon-launch.sh" ]] || fail "Missing launcher script at $OPS_DIR/airqmon-launch.sh"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon.target" ]] || fail "Missing target unit at $SYSTEMD_SOURCE_DIR/airqmon.target"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon-collector.service" ]] || fail "Missing collector unit in $SYSTEMD_SOURCE_DIR"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon-web.service" ]] || fail "Missing web unit in $SYSTEMD_SOURCE_DIR"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon-alerter.service" ]] || fail "Missing alerter unit in $SYSTEMD_SOURCE_DIR"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon-display.service" ]] || fail "Missing display unit in $SYSTEMD_SOURCE_DIR"
+    [[ -f "$SYSTEMD_SOURCE_DIR/airqmon-input.service" ]] || fail "Missing input unit in $SYSTEMD_SOURCE_DIR"
     [[ -x "$PYTHON_PATH" ]] || fail "Python interpreter was not found or is not executable: $PYTHON_PATH"
 }
 
@@ -192,7 +195,7 @@ EOF
 
 install_launcher() {
     install -d -m 755 "$(dirname -- "$LAUNCHER_PATH")"
-    install -m 755 "$BACKEND_DIR/airqmon-launch.sh" "$LAUNCHER_PATH"
+    install -m 755 "$OPS_DIR/airqmon-launch.sh" "$LAUNCHER_PATH"
     log "Installed launcher to $LAUNCHER_PATH"
 }
 
@@ -201,11 +204,11 @@ install_units() {
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf -- "$tmp_dir"' EXIT
 
-    render_unit "$BACKEND_DIR/airqmon-collector.service" "$tmp_dir/airqmon-collector.service" "$APP_USER"
-    render_unit "$BACKEND_DIR/airqmon-web.service" "$tmp_dir/airqmon-web.service" "$APP_USER"
-    render_unit "$BACKEND_DIR/airqmon-alerter.service" "$tmp_dir/airqmon-alerter.service" "$APP_USER"
-    render_unit "$BACKEND_DIR/airqmon-display.service" "$tmp_dir/airqmon-display.service" "$APP_USER"
-    render_unit "$BACKEND_DIR/airqmon-input.service" "$tmp_dir/airqmon-input.service" "$INPUT_USER"
+    render_unit "$SYSTEMD_SOURCE_DIR/airqmon-collector.service" "$tmp_dir/airqmon-collector.service" "$APP_USER"
+    render_unit "$SYSTEMD_SOURCE_DIR/airqmon-web.service" "$tmp_dir/airqmon-web.service" "$APP_USER"
+    render_unit "$SYSTEMD_SOURCE_DIR/airqmon-alerter.service" "$tmp_dir/airqmon-alerter.service" "$APP_USER"
+    render_unit "$SYSTEMD_SOURCE_DIR/airqmon-display.service" "$tmp_dir/airqmon-display.service" "$APP_USER"
+    render_unit "$SYSTEMD_SOURCE_DIR/airqmon-input.service" "$tmp_dir/airqmon-input.service" "$INPUT_USER"
 
     install -d -m 755 "$SYSTEMD_DIR"
     install -m 644 "$tmp_dir/airqmon-collector.service" "$SYSTEMD_DIR/airqmon-collector.service"
@@ -213,7 +216,7 @@ install_units() {
     install -m 644 "$tmp_dir/airqmon-alerter.service" "$SYSTEMD_DIR/airqmon-alerter.service"
     install -m 644 "$tmp_dir/airqmon-display.service" "$SYSTEMD_DIR/airqmon-display.service"
     install -m 644 "$tmp_dir/airqmon-input.service" "$SYSTEMD_DIR/airqmon-input.service"
-    install -m 644 "$BACKEND_DIR/airqmon.target" "$SYSTEMD_DIR/airqmon.target"
+    install -m 644 "$SYSTEMD_SOURCE_DIR/airqmon.target" "$SYSTEMD_DIR/airqmon.target"
     log "Installed AirQMon systemd units into $SYSTEMD_DIR"
 }
 
