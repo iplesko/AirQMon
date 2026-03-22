@@ -250,6 +250,11 @@ The repository includes:
 - `airqmon-alerter.service`
 - `airqmon-display.service`
 - `airqmon-input.service`
+- `airqmon.target`
+- `airqmon-launch.sh`
+- `install_systemd.sh`
+
+`airqmon-launch.sh` is an internal wrapper used by the systemd units. You normally should not run it manually; use `systemctl` on `airqmon.target` or the individual `airqmon-*.service` units instead.
 
 ### 1. Prepare environment
 
@@ -260,51 +265,67 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Review service files before install
-
-The shipped units assume:
-
-- user: `admin` for collector, web, alerter, and display
-- user: `root` for the input service
-- working directory: `/home/admin/airqmon/backend`
-- python binary: `/home/admin/airqmon/backend/venv/bin/python`
-
-If your setup differs, edit the relevant service files first.
-Both web and alerter services load environment variables from `/home/admin/airqmon/backend/.env`.
-
-### 3. Install and start services
+### 2. Prepare the application env file
 
 From repository root:
-
-```bash
-sudo cp backend/airqmon-collector.service /etc/systemd/system/airqmon-collector.service
-sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
-sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
-sudo cp backend/airqmon-display.service /etc/systemd/system/airqmon-display.service
-sudo cp backend/airqmon-input.service /etc/systemd/system/airqmon-input.service
-sudo systemctl daemon-reload
-```
-
-Also copy your env file:
 
 ```bash
 cp backend/.env.sample backend/.env
 # edit backend/.env and set real VAPID values
 ```
 
-Start and enable services:
+The web and alerter processes still load their VAPID settings from `backend/.env`.
+
+### 3. Install the wrapper and start everything
+
+From repository root:
 
 ```bash
-sudo systemctl enable --now airqmon-collector.service
-sudo systemctl enable --now airqmon-web.service
-sudo systemctl enable --now airqmon-alerter.service
-sudo systemctl enable --now airqmon-display.service
-sudo systemctl enable --now airqmon-input.service
+sudo bash backend/install_systemd.sh --start
+```
+
+This installer:
+
+- copies `airqmon-launch.sh` to `/usr/local/bin/airqmon-launch`
+- installs all unit files plus `airqmon.target`
+- writes shared runtime settings to `/etc/airqmon/airqmon.env`
+- enables `airqmon.target`, which starts all five services together
+
+For normal operation, manage the backend with `systemctl`. The launcher is still useful for low-level debugging, but it is not intended to be the routine manual entrypoint.
+
+Default behavior:
+
+- collector, web, alerter, and display run as the `sudo` caller (`$SUDO_USER`) when available
+- input runs as `root`
+- backend path comes from the checked-out repository location
+- python path defaults to `backend/venv/bin/python`
+- database path defaults to `backend/data.db`
+
+To customize users, paths, or intervals during install:
+
+```bash
+sudo bash backend/install_systemd.sh \
+  --app-user admin \
+  --input-user root \
+  --python /home/admin/airqmon/backend/venv/bin/python \
+  --db /home/admin/airqmon/backend/data.db \
+  --app-env-file /home/admin/airqmon/backend/.env \
+  --web-port 8000 \
+  --poll-interval 5 \
+  --start
+```
+
+After install, you can adjust the shared runtime settings in:
+
+```bash
+sudoedit /etc/airqmon/airqmon.env
+sudo systemctl restart airqmon.target
 ```
 
 ### 4. Verify status and logs
 
 ```bash
+sudo systemctl status airqmon.target
 sudo systemctl status airqmon-collector.service
 sudo systemctl status airqmon-web.service
 sudo systemctl status airqmon-alerter.service
@@ -332,7 +353,9 @@ sudo journalctl -u airqmon-input -f
   - check collector logs via `journalctl`
   - verify `--db` path is writable
 - Permission errors:
-  - verify service `User=` exists and owns project files
+  - verify the generated service user exists and owns project files
+  - rerun `install_systemd.sh --app-user <user>` if needed
 - Port conflicts on `8000`:
-  - change port in `airqmon-web.service` `ExecStart`
+  - change `AIRQMON_WEB_PORT` in `/etc/airqmon/airqmon.env`
+  - restart `airqmon.target`
 

@@ -1,0 +1,7 @@
+[Unit]
+Description=AirQMon Runtime Target
+Wants=airqmon-collector.service airqmon-web.service airqmon-alerter.service airqmon-display.service airqmon-input.service
+After=network.target
+
+[Install]
+WantedBy=multi-user.target

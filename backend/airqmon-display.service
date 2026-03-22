@@ -1,13 +1,14 @@
 [Unit]
 Description=AirQMon Display Service
 After=network.target
+PartOf=airqmon.target
 
 [Service]
 Type=simple
 User=admin
-WorkingDirectory=/home/admin/airqmon/backend
-ExecStart=/home/admin/airqmon/backend/venv/bin/python /home/admin/airqmon/backend/display.py --db /home/admin/airqmon/backend/data.db --interval 5
-ExecStopPost=+/usr/bin/pinctrl set 18 op dl pd
+EnvironmentFile=-/etc/airqmon/airqmon.env
+ExecStart=/usr/local/bin/airqmon-launch display
+ExecStopPost=+/usr/local/bin/airqmon-launch display-stop
 Restart=on-failure
 
 [Install]

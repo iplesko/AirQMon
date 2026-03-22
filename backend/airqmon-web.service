@@ -1,14 +1,13 @@
 [Unit]
 Description=AirQMon Webserver
 After=network.target
+PartOf=airqmon.target
 
 [Service]
 Type=simple
 User=admin
-WorkingDirectory=/home/admin/airqmon/backend
-Environment="PATH=/home/admin/airqmon/backend/venv/bin"
-EnvironmentFile=/home/admin/airqmon/backend/.env
-ExecStart=/home/admin/airqmon/backend/venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8000
+EnvironmentFile=-/etc/airqmon/airqmon.env
+ExecStart=/usr/local/bin/airqmon-launch web
 Restart=on-failure
 
 [Install]
