@@ -13,15 +13,43 @@ from sensor import read
 running = True
 PRUNE_EVERY_SECONDS = 3600
 
+
 def handle_sig(signum, frame):
     global running
     running = False
 
-def main():
+
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--db', default=str(DEFAULT_DB_PATH))
     parser.add_argument('--interval', type=float, default=10.0, help='seconds between measurements')
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def collect_once(conn, last_prune: int, *, ts: int | None = None, read_sensor=read) -> tuple[int, bool]:
+    if ts is None:
+        ts = int(time.time())
+
+    try:
+        co2, temp, hum = read_sensor()
+    except Exception as exc:
+        print('Sensor read error:', exc, file=sys.stderr)
+        return last_prune, False
+
+    insert_measurement(conn, ts, co2, temp, hum)
+
+    if ts - last_prune >= PRUNE_EVERY_SECONDS:
+        deleted = prune_old_measurements(conn)
+        if deleted:
+            print(f'Pruned {deleted} rows older than 7 days')
+        last_prune = ts
+
+    print(f'{datetime.fromtimestamp(ts).isoformat()}  co2={co2}ppm  temp={temp}C  hum={hum}%')
+    return last_prune, True
+
+
+def main():
+    args = parse_args()
 
     conn = get_conn(args.db)
     init_db(conn)
@@ -33,23 +61,11 @@ def main():
     print('Starting collector, writing to', args.db)
     try:
         while running:
-            ts = int(time.time())
-            try:
-                co2, temp, hum = read()
-            except Exception as e:
-                print('Sensor read error:', e, file=sys.stderr)
+            last_prune, collected = collect_once(conn, last_prune)
+            if not collected:
                 time.sleep(args.interval)
                 continue
 
-            insert_measurement(conn, ts, co2, temp, hum)
-
-            if ts - last_prune >= PRUNE_EVERY_SECONDS:
-                deleted = prune_old_measurements(conn)
-                if deleted:
-                    print(f'Pruned {deleted} rows older than 7 days')
-                last_prune = ts
-
-            print(f'{datetime.fromtimestamp(ts).isoformat()}  co2={co2}ppm  temp={temp}C  hum={hum}%')
             slept = 0.0
             while running and slept < args.interval:
                 time.sleep(0.5)
