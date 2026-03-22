@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import os
 import signal
 import sys
 import time
@@ -15,9 +14,9 @@ from luma.core.interface.serial import spi
 from luma.lcd.device import ili9341
 
 from db import get_conn, init_db
+from display_control import DISPLAY_TOGGLE_SIGNAL, remove_display_pid, write_display_pid
 from runtime_config import read_display_config
 
-from .button import open_gpiochip_event_fd, wait_for_rising_edge
 from .data import DisplayModel, build_display_model, read_display_snapshot
 from .layouts import STANDARD_LAYOUT, make_error_frame, toggle_layout
 
@@ -31,12 +30,11 @@ ROTATE = 0
 DISPLAY_BRIGHTNESS_GPIO = 18
 DC_GPIO = 25
 RST_GPIO = 27
-LAYOUT_BUTTON_GPIO = 24
-BUTTON_BOUNCE_MS = 250
 NIGHT_MODE_START_HOUR = 22
 NIGHT_MODE_END_HOUR = 6
 NIGHT_MODE_BRIGHTNESS = 1
 DISPLAY_PWM_HZ = 1000
+DISPLAY_IDLE_POLL_SECONDS = 0.1
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,7 +95,6 @@ def main() -> int:
     display_size = display.size
 
     display_pwm = None
-    button_event_fd: Optional[int] = None
     display_config = read_display_config(conn, persist_defaults=True)
     active_brightness = effective_brightness(
         display_config.display_brightness,
@@ -114,30 +111,37 @@ def main() -> int:
         display_pwm = None
 
     stop = False
+    exit_code = 0
     current_layout = STANDARD_LAYOUT
-    last_layout_toggle_at = 0.0
+    pending_layout_toggles = 0
     refresh_interval = max(0.2, args.interval)
 
     def _handle_stop(_signum: int, _frame) -> None:
         nonlocal stop
         stop = True
 
+    def _handle_toggle_layout(_signum: int, _frame) -> None:
+        nonlocal pending_layout_toggles
+        pending_layout_toggles += 1
+
     signal.signal(signal.SIGINT, _handle_stop)
     signal.signal(signal.SIGTERM, _handle_stop)
-
-    try:
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(LAYOUT_BUTTON_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        button_event_fd = open_gpiochip_event_fd(LAYOUT_BUTTON_GPIO)
-        print("Layout button interrupt backend: gpiochip", file=sys.stderr)
-    except Exception as exc:
-        print(f"Layout button init failed: {exc}", file=sys.stderr)
+    if DISPLAY_TOGGLE_SIGNAL is None:
+        print("Display layout toggle signal is unavailable on this platform.", file=sys.stderr)
+    else:
+        signal.signal(DISPLAY_TOGGLE_SIGNAL, _handle_toggle_layout)
 
     last_drawn_signature: Optional[tuple[object, ...]] = None
     next_refresh_at = 0.0
     latest_model: Optional[DisplayModel] = None
     try:
+        try:
+            write_display_pid()
+        except OSError as exc:
+            print(f"Display control init failed: {exc}", file=sys.stderr)
+            exit_code = 2
+            stop = True
+
         while not stop:
             now = time.monotonic()
             should_refresh = now >= next_refresh_at
@@ -165,6 +169,10 @@ def main() -> int:
                     next_refresh_at = now + refresh_interval
                     latest_model = None
 
+            while pending_layout_toggles > 0:
+                current_layout = toggle_layout(current_layout)
+                pending_layout_toggles -= 1
+
             if latest_model is not None:
                 try:
                     current_signature = (current_layout.name, latest_model)
@@ -176,34 +184,19 @@ def main() -> int:
                     print(f"Display render failed: {exc}", file=sys.stderr)
                     next_refresh_at = now + refresh_interval
 
-            sleep_until_refresh = max(0.0, next_refresh_at - time.monotonic())
-            if button_event_fd is None:
-                time.sleep(sleep_until_refresh)
-                continue
-
-            try:
-                button_pressed = wait_for_rising_edge(button_event_fd, sleep_until_refresh)
-            except OSError as exc:
-                print(f"Layout button wait failed: {exc}", file=sys.stderr)
-                os.close(button_event_fd)
-                button_event_fd = None
-                continue
-
-            if not button_pressed:
-                continue
-
-            now = time.monotonic()
-            if (now - last_layout_toggle_at) >= (BUTTON_BOUNCE_MS / 1000.0):
-                current_layout = toggle_layout(current_layout)
-                last_layout_toggle_at = now
+            sleep_until_refresh = min(
+                max(0.0, next_refresh_at - time.monotonic()),
+                DISPLAY_IDLE_POLL_SECONDS,
+            )
+            if sleep_until_refresh > 0.0:
+                try:
+                    time.sleep(sleep_until_refresh)
+                except InterruptedError:
+                    pass
     finally:
         conn.close()
+        remove_display_pid()
 
-    if button_event_fd is not None:
-        try:
-            os.close(button_event_fd)
-        except OSError:
-            pass
     if display_pwm is not None:
         try:
             display_pwm.ChangeDutyCycle(0.0)
@@ -214,11 +207,7 @@ def main() -> int:
         GPIO.cleanup(DISPLAY_BRIGHTNESS_GPIO)
     except Exception:
         pass
-    try:
-        GPIO.cleanup(LAYOUT_BUTTON_GPIO)
-    except Exception:
-        pass
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

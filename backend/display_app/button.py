@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from enum import Enum
 import fcntl
 import os
 import select
@@ -8,7 +9,15 @@ import select
 GPIO_CHIP_DEVICE = "/dev/gpiochip0"
 GPIOHANDLE_REQUEST_INPUT = 1 << 0
 GPIOEVENT_REQUEST_RISING_EDGE = 1 << 0
+GPIOEVENT_REQUEST_FALLING_EDGE = 1 << 1
 GPIOEVENT_EVENT_RISING_EDGE = 0x01
+GPIOEVENT_EVENT_FALLING_EDGE = 0x02
+GPIO_CONSUMER_LABEL_MAX_BYTES = 31
+
+
+class ButtonEdge(Enum):
+    RISING = "rising"
+    FALLING = "falling"
 
 
 class GpioEventRequest(ctypes.Structure):
@@ -52,14 +61,14 @@ def _ioctl_roundtrip(fd: int, request_code: int, payload: ctypes.Structure) -> c
     return type(payload).from_buffer_copy(payload_buffer)
 
 
-def open_gpiochip_event_fd(line_offset: int) -> int:
+def open_gpiochip_event_fd(line_offset: int, consumer_label: bytes = b"airqmon-input") -> int:
     chip_fd = os.open(GPIO_CHIP_DEVICE, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
     try:
         request = GpioEventRequest(
             lineoffset=line_offset,
             handleflags=GPIOHANDLE_REQUEST_INPUT,
-            eventflags=GPIOEVENT_REQUEST_RISING_EDGE,
-            consumer_label=b"airqmon-display",
+            eventflags=GPIOEVENT_REQUEST_RISING_EDGE | GPIOEVENT_REQUEST_FALLING_EDGE,
+            consumer_label=consumer_label[:GPIO_CONSUMER_LABEL_MAX_BYTES],
             fd=-1,
         )
         response = _ioctl_roundtrip(chip_fd, GPIO_GET_LINEEVENT_IOCTL, request)
@@ -71,18 +80,22 @@ def open_gpiochip_event_fd(line_offset: int) -> int:
     return response.fd
 
 
-def wait_for_rising_edge(event_fd: int, timeout_seconds: float) -> bool:
+def wait_for_button_edge(event_fd: int, timeout_seconds: float) -> ButtonEdge | None:
     try:
         readable, _, _ = select.select([event_fd], [], [], max(0.0, timeout_seconds))
     except InterruptedError:
-        return False
+        return None
 
     if not readable:
-        return False
+        return None
 
     raw_event = os.read(event_fd, ctypes.sizeof(GpioEventData))
     if len(raw_event) < ctypes.sizeof(GpioEventData):
-        return False
+        return None
 
     event = GpioEventData.from_buffer_copy(raw_event)
-    return event.id == GPIOEVENT_EVENT_RISING_EDGE
+    if event.id == GPIOEVENT_EVENT_RISING_EDGE:
+        return ButtonEdge.RISING
+    if event.id == GPIOEVENT_EVENT_FALLING_EDGE:
+        return ButtonEdge.FALLING
+    return None

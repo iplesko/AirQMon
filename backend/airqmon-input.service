@@ -1,0 +1,13 @@
+[Unit]
+Description=AirQMon Input Service
+After=airqmon-display.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/admin/airqmon/backend
+ExecStart=/home/admin/airqmon/backend/venv/bin/python /home/admin/airqmon/backend/input.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

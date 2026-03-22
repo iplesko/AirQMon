@@ -2,12 +2,13 @@
 
 ## Overview
 
-The backend has four runtime processes:
+The backend has five runtime processes:
 
 - `collector.py`: reads sensor values (CO2, temperature, humidity) and stores them in SQLite.
 - `server.py`: exposes REST endpoints and optionally serves the built frontend from `../frontend/dist`.
 - `alerter.py`: watches new measurements in SQLite and sends Web Push alerts (VAPID) when CO2 is high.
 - `display.py`: compatibility entrypoint for the local SPI display app in `display_app/`.
+- `input.py`: owns the capacitive touch button, toggles display layouts, and powers off the Pi on a 5-second hold.
 
 Tested hardware setup:
 
@@ -17,7 +18,7 @@ Tested hardware setup:
 - Grove Touch Sensor (capacitive touch button)
 - Sensor uses I2C GPIO pins
 - Display uses SPI GPIO pins plus PWM/control GPIOs
-- Touch button uses a single GPIO input and switches display layouts locally
+- Touch button uses a single GPIO input handled by the input service for local layout switching and 5-second hold shutdown
 
 ## Components
 
@@ -70,13 +71,20 @@ CLI options (selected):
 - Reads the latest stored measurement plus trend data from SQLite.
 - Renders the Waveshare SPI display locally on the Raspberry Pi.
 - Supports multiple on-device layouts.
-- Uses the Grove Touch Sensor on `GPIO24` (physical pin `18`) to switch layouts.
+- Receives local layout-toggle requests from `input.py`.
 - Applies configurable display brightness and optional night mode.
 
 CLI options:
 
 - `--db`: SQLite file path (default: `backend/data.db`)
 - `--interval`: refresh interval in seconds (default: `5.0`)
+
+### Local Input (`input.py`)
+
+- Owns the Grove Touch Sensor on `GPIO24` (physical pin `18`).
+- A touch switches layouts immediately by signaling the display process on button press.
+- A 5-second hold requests a full Raspberry Pi shutdown.
+- Intended to run as `root` when you want shutdown support.
 
 ## Requirements
 
@@ -150,12 +158,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Touch button wiring used by the display app:
+Touch button wiring used by the input service:
 
 - Grove Touch Sensor `SIG` -> Raspberry Pi `GPIO24` (physical pin `18`)
 - Grove Touch Sensor `VCC` -> Raspberry Pi `3.3V`
 - Grove Touch Sensor `GND` -> Raspberry Pi `GND`
 - The second Grove pin (`NC` / white wire) is unused
+- Layout switching is triggered on button press for fast response; holding for 5 seconds requests system shutdown.
 
 ## Local Development
 
@@ -209,7 +218,16 @@ source venv/bin/activate
 python display.py --db ./data.db --interval 5
 ```
 
-### 5. Preview the Display Locally
+### 5. Run the Local Input Service
+
+In another terminal on the Raspberry Pi:
+
+```bash
+cd backend
+sudo ./venv/bin/python input.py
+```
+
+### 6. Preview the Display Locally
 
 You can render the same display layouts to PNG files on your development machine without SPI hardware.
 
@@ -231,6 +249,7 @@ The repository includes:
 - `airqmon-web.service`
 - `airqmon-alerter.service`
 - `airqmon-display.service`
+- `airqmon-input.service`
 
 ### 1. Prepare environment
 
@@ -245,7 +264,8 @@ pip install -r requirements.txt
 
 The shipped units assume:
 
-- user: `admin`
+- user: `admin` for collector, web, alerter, and display
+- user: `root` for the input service
 - working directory: `/home/admin/airqmon/backend`
 - python binary: `/home/admin/airqmon/backend/venv/bin/python`
 
@@ -261,6 +281,7 @@ sudo cp backend/airqmon-collector.service /etc/systemd/system/airqmon-collector.
 sudo cp backend/airqmon-web.service /etc/systemd/system/airqmon-web.service
 sudo cp backend/airqmon-alerter.service /etc/systemd/system/airqmon-alerter.service
 sudo cp backend/airqmon-display.service /etc/systemd/system/airqmon-display.service
+sudo cp backend/airqmon-input.service /etc/systemd/system/airqmon-input.service
 sudo systemctl daemon-reload
 ```
 
@@ -278,10 +299,8 @@ sudo systemctl enable --now airqmon-collector.service
 sudo systemctl enable --now airqmon-web.service
 sudo systemctl enable --now airqmon-alerter.service
 sudo systemctl enable --now airqmon-display.service
+sudo systemctl enable --now airqmon-input.service
 ```
-
-`airqmon-display.service` drives `GPIO18` low in `ExecStopPost` to turn off the TFT backlight when the display service stops, including during shutdown.
-If your backlight is wired with inverted logic, change `dl` to `dh` in `backend/airqmon-display.service` before installing it.
 
 ### 4. Verify status and logs
 
@@ -290,10 +309,12 @@ sudo systemctl status airqmon-collector.service
 sudo systemctl status airqmon-web.service
 sudo systemctl status airqmon-alerter.service
 sudo systemctl status airqmon-display.service
+sudo systemctl status airqmon-input.service
 sudo journalctl -u airqmon-collector -f
 sudo journalctl -u airqmon-web -f
 sudo journalctl -u airqmon-alerter -f
 sudo journalctl -u airqmon-display -f
+sudo journalctl -u airqmon-input -f
 ```
 
 ## Data Storage
