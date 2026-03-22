@@ -1,11 +1,20 @@
 import { calculateCo2Trend, formatCo2TrendPercentage } from './co2Trend'
 import type { Measurement } from './types'
 
-function co2ColorClass(value: number | undefined) {
+type Co2Quality = 'amazing' | 'good' | 'average' | 'bad' | 'awful'
+
+function getCo2Quality(value: number | undefined): Co2Quality | '' {
   if (value === undefined || value === null) return ''
-  if (value >= 2000) return 'co2-very-high'
-  if (value >= 1000) return 'co2-high'
-  return ''
+  if (value <= 600) return 'amazing'
+  if (value <= 1000) return 'good'
+  if (value <= 1500) return 'average'
+  if (value < 2000) return 'bad'
+  return 'awful'
+}
+
+function co2ColorClass(value: number | undefined) {
+  const quality = getCo2Quality(value)
+  return quality ? `co2-${quality}` : ''
 }
 
 function formatReading(value: number, unit: string, decimals: number): string {

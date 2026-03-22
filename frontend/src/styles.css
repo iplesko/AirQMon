@@ -230,14 +230,26 @@ body,
 .co2-big {
   font-size: 40px;
   font-weight: 800;
-  color: var(--accent);
+  color: var(--text);
 }
 
-.co2-high {
+.co2-amazing {
+  color: #1edc11;
+}
+
+.co2-good {
+  color: #16a34a;
+}
+
+.co2-average {
+  color: #f59e0b;
+}
+
+.co2-bad {
   color: #ff7b72;
 }
 
-.co2-very-high {
+.co2-awful {
   color: #ff3b30;
 }
 
