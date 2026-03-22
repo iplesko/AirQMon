@@ -283,6 +283,16 @@ cp backend/.env.sample backend/.env
 
 The web and alerter processes still load their VAPID settings from `backend/.env`.
 
+## Testing
+
+From `backend/`:
+
+```bash
+source venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ### 3. Install the wrapper and start everything
 
 From repository root:

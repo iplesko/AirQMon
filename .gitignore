@@ -1,6 +1,10 @@
 .vscode/
 
 __pycache__/
+.pytest_cache/
+backend/pytest-cache-files-*/
+backend/tests/.tmp/
+backend/tests/_tmp/
 backend/data.db
 backend/preview_out/
 backend/alerter.env
