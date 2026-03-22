@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime
 import signal
 import sys
@@ -31,6 +32,12 @@ NIGHT_MODE_END_HOUR = 6
 NIGHT_MODE_BRIGHTNESS = 1
 DISPLAY_PWM_HZ = 1000
 DISPLAY_IDLE_POLL_SECONDS = 0.1
+
+
+@dataclass(frozen=True)
+class DisplayRefreshResult:
+    next_refresh_at: float
+    model: Optional[DisplayModel]
 
 
 def load_display_runtime():
@@ -76,6 +83,65 @@ def effective_brightness(configured_brightness: int, night_mode_enabled: bool) -
     if night_mode_enabled and is_night_mode_active():
         return night_mode_brightness
     return configured_brightness
+
+
+def update_display_brightness(conn, active_brightness: int, display_pwm):
+    display_config = read_display_config(conn)
+    latest_brightness = effective_brightness(
+        display_config.display_brightness,
+        display_config.night_mode_enabled,
+    )
+    if latest_brightness != active_brightness and display_pwm is not None:
+        display_pwm.ChangeDutyCycle(latest_brightness)
+        return latest_brightness
+    return active_brightness
+
+
+def refresh_display_model(conn, display, display_size: tuple[int, int], refresh_interval: float, now: float) -> DisplayRefreshResult:
+    try:
+        return DisplayRefreshResult(
+            next_refresh_at=now + refresh_interval,
+            model=build_display_model(read_display_snapshot(conn)),
+        )
+    except Exception as exc:
+        display.display(make_error_frame("Data read error", display_size))
+        print(f"Display data refresh failed: {exc}", file=sys.stderr)
+        return DisplayRefreshResult(next_refresh_at=now + refresh_interval, model=None)
+
+
+def apply_layout_toggles(current_layout, pending_layout_toggles: int):
+    while pending_layout_toggles > 0:
+        current_layout = toggle_layout(current_layout)
+        pending_layout_toggles -= 1
+    return current_layout, pending_layout_toggles
+
+
+def render_model_if_needed(
+    display,
+    current_layout,
+    latest_model: Optional[DisplayModel],
+    display_size: tuple[int, int],
+    last_drawn_signature: Optional[tuple[object, ...]],
+    refresh_interval: float,
+    now: float,
+):
+    if latest_model is None:
+        return last_drawn_signature, None
+
+    try:
+        current_signature = (current_layout.name, latest_model)
+        if current_signature != last_drawn_signature:
+            display.display(current_layout.render(latest_model, display_size))
+            last_drawn_signature = current_signature
+        return last_drawn_signature, None
+    except Exception as exc:
+        display.display(make_error_frame("Configuration error", display_size))
+        print(f"Display render failed: {exc}", file=sys.stderr)
+        return last_drawn_signature, now + refresh_interval
+
+
+def compute_sleep_until_refresh(next_refresh_at: float, now: float) -> float:
+    return min(max(0.0, next_refresh_at - now), DISPLAY_IDLE_POLL_SECONDS)
 
 
 def main() -> int:
@@ -158,46 +224,33 @@ def main() -> int:
 
             try:
                 if should_refresh:
-                    display_config = read_display_config(conn)
-                    latest_brightness = effective_brightness(
-                        display_config.display_brightness,
-                        display_config.night_mode_enabled,
-                    )
-                    if latest_brightness != active_brightness and display_pwm is not None:
-                        display_pwm.ChangeDutyCycle(latest_brightness)
-                        active_brightness = latest_brightness
+                    active_brightness = update_display_brightness(conn, active_brightness, display_pwm)
             except Exception as exc:
                 print(f"Display brightness update failed: {exc}", file=sys.stderr)
 
             if should_refresh:
-                try:
-                    latest_model = build_display_model(read_display_snapshot(conn))
-                    next_refresh_at = now + refresh_interval
-                except Exception as exc:
-                    display.display(make_error_frame("Data read error", display_size))
-                    print(f"Display data refresh failed: {exc}", file=sys.stderr)
-                    next_refresh_at = now + refresh_interval
-                    latest_model = None
+                refresh_result = refresh_display_model(conn, display, display_size, refresh_interval, now)
+                latest_model = refresh_result.model
+                next_refresh_at = refresh_result.next_refresh_at
 
-            while pending_layout_toggles > 0:
-                current_layout = toggle_layout(current_layout)
-                pending_layout_toggles -= 1
-
-            if latest_model is not None:
-                try:
-                    current_signature = (current_layout.name, latest_model)
-                    if current_signature != last_drawn_signature:
-                        display.display(current_layout.render(latest_model, display_size))
-                        last_drawn_signature = current_signature
-                except Exception as exc:
-                    display.display(make_error_frame("Configuration error", display_size))
-                    print(f"Display render failed: {exc}", file=sys.stderr)
-                    next_refresh_at = now + refresh_interval
-
-            sleep_until_refresh = min(
-                max(0.0, next_refresh_at - time.monotonic()),
-                DISPLAY_IDLE_POLL_SECONDS,
+            current_layout, pending_layout_toggles = apply_layout_toggles(
+                current_layout,
+                pending_layout_toggles,
             )
+
+            last_drawn_signature, render_refresh_at = render_model_if_needed(
+                display,
+                current_layout,
+                latest_model,
+                display_size,
+                last_drawn_signature,
+                refresh_interval,
+                now,
+            )
+            if render_refresh_at is not None:
+                next_refresh_at = render_refresh_at
+
+            sleep_until_refresh = compute_sleep_until_refresh(next_refresh_at, time.monotonic())
             if sleep_until_refresh > 0.0:
                 try:
                     time.sleep(sleep_until_refresh)

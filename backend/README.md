@@ -293,11 +293,6 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-The current test suite covers database helpers, runtime config/state handling, CO2 trend calculations,
-collector cycle behavior, input shutdown helpers, display PID control helpers, display brightness/night
-mode logic, sensor fallback behavior, display model formatting, push notification delivery behavior,
-alert-worker transitions, and the FastAPI server endpoints.
-
 ### 3. Install the wrapper and start everything
 
 From repository root:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import signal
 import subprocess
@@ -17,6 +18,14 @@ BUTTON_IDLE_POLL_SECONDS = 1.0
 BUTTON_HOLD_POLL_SECONDS = 0.1
 POWEROFF_CANDIDATE_PATHS = ("/usr/sbin/poweroff", "/sbin/poweroff")
 SYSTEMCTL_CANDIDATE_PATHS = ("/usr/bin/systemctl", "/bin/systemctl")
+
+
+@dataclass
+class InputLoopState:
+    stop: bool = False
+    last_layout_toggle_at: float = 0.0
+    button_pressed_at: Optional[float] = None
+    shutdown_attempted_for_press: bool = False
 
 
 def load_input_runtime():
@@ -71,6 +80,75 @@ def request_system_shutdown(shutdown_command: Optional[tuple[str, ...]]) -> bool
     return True
 
 
+def compute_wait_timeout(state: InputLoopState, now: float) -> float:
+    wait_timeout = BUTTON_IDLE_POLL_SECONDS
+    if state.button_pressed_at is None:
+        return wait_timeout
+
+    hold_remaining = max(
+        0.0,
+        (state.button_pressed_at + BUTTON_SHUTDOWN_HOLD_SECONDS) - now,
+    )
+    return min(wait_timeout, hold_remaining, BUTTON_HOLD_POLL_SECONDS)
+
+
+def handle_no_button_edge(
+    state: InputLoopState,
+    *,
+    now: float,
+    button_is_high: bool,
+    shutdown_command: Optional[tuple[str, ...]],
+    request_shutdown=request_system_shutdown,
+) -> None:
+    if state.button_pressed_at is None or state.shutdown_attempted_for_press:
+        return
+    if not button_is_high:
+        return
+    if (now - state.button_pressed_at) < BUTTON_SHUTDOWN_HOLD_SECONDS:
+        return
+
+    state.shutdown_attempted_for_press = True
+    if request_shutdown(shutdown_command):
+        state.stop = True
+
+
+def handle_button_edge_event(
+    state: InputLoopState,
+    button_edge,
+    *,
+    now: float,
+    rising_edge,
+    falling_edge,
+    shutdown_command: Optional[tuple[str, ...]],
+    request_layout=request_layout_toggle,
+    request_shutdown=request_system_shutdown,
+) -> None:
+    if button_edge == rising_edge:
+        if state.button_pressed_at is None:
+            state.button_pressed_at = now
+            state.shutdown_attempted_for_press = False
+            if (now - state.last_layout_toggle_at) >= (BUTTON_BOUNCE_MS / 1000.0):
+                state.last_layout_toggle_at = now
+                if not request_layout():
+                    print("Layout toggle request skipped: display service is unavailable.", file=sys.stderr)
+        return
+
+    if button_edge != falling_edge or state.button_pressed_at is None:
+        return
+
+    held_for = now - state.button_pressed_at
+    state.button_pressed_at = None
+
+    if state.shutdown_attempted_for_press:
+        state.shutdown_attempted_for_press = False
+        return
+
+    if held_for >= BUTTON_SHUTDOWN_HOLD_SECONDS:
+        state.shutdown_attempted_for_press = True
+        if request_shutdown(shutdown_command):
+            state.stop = True
+
+
 def main() -> int:
     try:
         GPIO, ButtonEdge, open_gpiochip_event_fd, wait_for_button_edge = load_input_runtime()
@@ -80,16 +158,12 @@ def main() -> int:
 
     GPIO.setwarnings(False)
 
-    stop = False
+    state = InputLoopState()
     button_event_fd: Optional[int] = None
-    last_layout_toggle_at = 0.0
-    button_pressed_at: Optional[float] = None
-    shutdown_attempted_for_press = False
     shutdown_command = resolve_shutdown_command()
 
     def _handle_stop(_signum: int, _frame) -> None:
-        nonlocal stop
-        stop = True
+        state.stop = True
 
     signal.signal(signal.SIGINT, _handle_stop)
     signal.signal(signal.SIGTERM, _handle_stop)
@@ -104,14 +178,8 @@ def main() -> int:
         return 2
 
     try:
-        while not stop:
-            wait_timeout = BUTTON_IDLE_POLL_SECONDS
-            if button_pressed_at is not None:
-                hold_remaining = max(
-                    0.0,
-                    (button_pressed_at + BUTTON_SHUTDOWN_HOLD_SECONDS) - time.monotonic(),
-                )
-                wait_timeout = min(wait_timeout, hold_remaining, BUTTON_HOLD_POLL_SECONDS)
+        while not state.stop:
+            wait_timeout = compute_wait_timeout(state, time.monotonic())
 
             try:
                 button_edge = wait_for_button_edge(button_event_fd, wait_timeout)
@@ -120,46 +188,22 @@ def main() -> int:
                 return 2
 
             if button_edge is None:
-                if button_pressed_at is None or shutdown_attempted_for_press:
-                    continue
-
-                if GPIO.input(LAYOUT_BUTTON_GPIO) != GPIO.HIGH:
-                    continue
-
-                now = time.monotonic()
-                if (now - button_pressed_at) < BUTTON_SHUTDOWN_HOLD_SECONDS:
-                    continue
-
-                shutdown_attempted_for_press = True
-                if request_system_shutdown(shutdown_command):
-                    stop = True
+                handle_no_button_edge(
+                    state,
+                    now=time.monotonic(),
+                    button_is_high=GPIO.input(LAYOUT_BUTTON_GPIO) == GPIO.HIGH,
+                    shutdown_command=shutdown_command,
+                )
                 continue
 
-            now = time.monotonic()
-            if button_edge == ButtonEdge.RISING:
-                if button_pressed_at is None:
-                    button_pressed_at = now
-                    shutdown_attempted_for_press = False
-                    if (now - last_layout_toggle_at) >= (BUTTON_BOUNCE_MS / 1000.0):
-                        last_layout_toggle_at = now
-                        if not request_layout_toggle():
-                            print("Layout toggle request skipped: display service is unavailable.", file=sys.stderr)
-                continue
-
-            if button_edge != ButtonEdge.FALLING or button_pressed_at is None:
-                continue
-
-            held_for = now - button_pressed_at
-            button_pressed_at = None
-
-            if shutdown_attempted_for_press:
-                shutdown_attempted_for_press = False
-                continue
-
-            if held_for >= BUTTON_SHUTDOWN_HOLD_SECONDS:
-                shutdown_attempted_for_press = True
-                if request_system_shutdown(shutdown_command):
-                    stop = True
+            handle_button_edge_event(
+                state,
+                button_edge,
+                now=time.monotonic(),
+                rising_edge=ButtonEdge.RISING,
+                falling_edge=ButtonEdge.FALLING,
+                shutdown_command=shutdown_command,
+            )
     finally:
         if button_event_fd is not None:
             try:

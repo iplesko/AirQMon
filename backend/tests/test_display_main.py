@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib
 from argparse import Namespace
+from types import SimpleNamespace
+
+import pytest
 
 display_main = importlib.import_module("display_app.main")
 
@@ -77,3 +80,161 @@ def test_main_returns_2_when_spi_initialization_fails(monkeypatch, capsys, test_
     assert display_main.main() == 2
     assert fake_conn.closed is True
     assert "Failed to initialize SPI display: spi unavailable" in capsys.readouterr().err
+
+
+def test_update_display_brightness_changes_pwm_when_value_changes(monkeypatch) -> None:
+    pwm_calls: list[int] = []
+    pwm = SimpleNamespace(ChangeDutyCycle=lambda value: pwm_calls.append(value))
+
+    monkeypatch.setattr(
+        display_main,
+        "read_display_config",
+        lambda _conn: SimpleNamespace(display_brightness=30, night_mode_enabled=False),
+    )
+    monkeypatch.setattr(display_main, "effective_brightness", lambda brightness, _night: brightness)
+
+    result = display_main.update_display_brightness("conn", active_brightness=60, display_pwm=pwm)
+
+    assert result == 30
+    assert pwm_calls == [30]
+
+
+def test_update_display_brightness_keeps_value_without_pwm(monkeypatch) -> None:
+    monkeypatch.setattr(
+        display_main,
+        "read_display_config",
+        lambda _conn: SimpleNamespace(display_brightness=30, night_mode_enabled=False),
+    )
+    monkeypatch.setattr(display_main, "effective_brightness", lambda brightness, _night: brightness)
+
+    assert display_main.update_display_brightness("conn", active_brightness=60, display_pwm=None) == 60
+
+
+def test_refresh_display_model_returns_model_and_next_refresh(monkeypatch) -> None:
+    rendered_frames: list[object] = []
+    display = SimpleNamespace(display=lambda frame: rendered_frames.append(frame))
+
+    monkeypatch.setattr(display_main, "read_display_snapshot", lambda _conn: "snapshot")
+    monkeypatch.setattr(display_main, "build_display_model", lambda snapshot: f"model:{snapshot}")
+
+    result = display_main.refresh_display_model(
+        "conn",
+        display,
+        (320, 240),
+        refresh_interval=5.0,
+        now=10.0,
+    )
+
+    assert result == display_main.DisplayRefreshResult(next_refresh_at=15.0, model="model:snapshot")
+    assert rendered_frames == []
+
+
+def test_refresh_display_model_shows_error_frame_on_failure(monkeypatch, capsys) -> None:
+    rendered_frames: list[object] = []
+    display = SimpleNamespace(display=lambda frame: rendered_frames.append(frame))
+
+    monkeypatch.setattr(
+        display_main,
+        "read_display_snapshot",
+        lambda _conn: (_ for _ in ()).throw(RuntimeError("db failure")),
+    )
+    monkeypatch.setattr(display_main, "make_error_frame", lambda message, size: (message, size))
+
+    result = display_main.refresh_display_model(
+        "conn",
+        display,
+        (320, 240),
+        refresh_interval=5.0,
+        now=10.0,
+    )
+
+    assert result == display_main.DisplayRefreshResult(next_refresh_at=15.0, model=None)
+    assert rendered_frames == [("Data read error", (320, 240))]
+    assert "Display data refresh failed: db failure" in capsys.readouterr().err
+
+
+def test_apply_layout_toggles_consumes_pending_events(monkeypatch) -> None:
+    monkeypatch.setattr(display_main, "toggle_layout", lambda layout: f"{layout}*")
+
+    layout, pending = display_main.apply_layout_toggles("standard", 2)
+
+    assert layout == "standard**"
+    assert pending == 0
+
+
+def test_render_model_if_needed_only_draws_when_signature_changes() -> None:
+    rendered_frames: list[object] = []
+    display = SimpleNamespace(display=lambda frame: rendered_frames.append(frame))
+
+    class FakeLayout:
+        name = "standard"
+
+        def render(self, model, size):
+            return (model, size)
+
+    model = object()
+    layout = FakeLayout()
+
+    signature, refresh_at = display_main.render_model_if_needed(
+        display,
+        layout,
+        model,
+        (320, 240),
+        last_drawn_signature=None,
+        refresh_interval=5.0,
+        now=10.0,
+    )
+
+    assert signature == ("standard", model)
+    assert refresh_at is None
+    assert rendered_frames == [((model), (320, 240))]
+
+    signature, refresh_at = display_main.render_model_if_needed(
+        display,
+        layout,
+        model,
+        (320, 240),
+        last_drawn_signature=signature,
+        refresh_interval=5.0,
+        now=10.0,
+    )
+
+    assert signature == ("standard", model)
+    assert refresh_at is None
+    assert len(rendered_frames) == 1
+
+
+def test_render_model_if_needed_shows_error_frame_on_failure(monkeypatch, capsys) -> None:
+    rendered_frames: list[object] = []
+    display = SimpleNamespace(display=lambda frame: rendered_frames.append(frame))
+
+    class FakeLayout:
+        name = "standard"
+
+        def render(self, model, size):
+            raise RuntimeError("bad render")
+
+    monkeypatch.setattr(display_main, "make_error_frame", lambda message, size: (message, size))
+
+    signature, refresh_at = display_main.render_model_if_needed(
+        display,
+        FakeLayout(),
+        object(),
+        (320, 240),
+        last_drawn_signature=None,
+        refresh_interval=5.0,
+        now=10.0,
+    )
+
+    assert signature is None
+    assert refresh_at == pytest.approx(15.0)
+    assert rendered_frames == [("Configuration error", (320, 240))]
+    assert "Display render failed: bad render" in capsys.readouterr().err
+
+
+def test_compute_sleep_until_refresh_clamps_to_idle_poll() -> None:
+    assert display_main.compute_sleep_until_refresh(1.0, now=0.0) == pytest.approx(
+        display_main.DISPLAY_IDLE_POLL_SECONDS
+    )
+    assert display_main.compute_sleep_until_refresh(0.05, now=0.0) == pytest.approx(0.05)
+    assert display_main.compute_sleep_until_refresh(0.0, now=1.0) == 0.0

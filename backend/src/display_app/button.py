@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import ctypes
 from enum import Enum
-import fcntl
 import os
 import select
+
+try:
+    import fcntl
+except ModuleNotFoundError:
+    fcntl = None
 
 GPIO_CHIP_DEVICE = "/dev/gpiochip0"
 GPIOHANDLE_REQUEST_INPUT = 1 << 0
@@ -54,6 +58,9 @@ GPIO_GET_LINEEVENT_IOCTL = _iowr(0xB4, 0x04, GpioEventRequest)
 
 
 def _ioctl_roundtrip(fd: int, request_code: int, payload: ctypes.Structure) -> ctypes.Structure:
+    if fcntl is None:
+        raise RuntimeError("fcntl is unavailable on this platform")
+
     payload_buffer = bytearray(
         ctypes.string_at(ctypes.addressof(payload), ctypes.sizeof(payload))
     )
