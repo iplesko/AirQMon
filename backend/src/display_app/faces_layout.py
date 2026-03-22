@@ -32,7 +32,7 @@ AIR_QUALITY_LEVELS = (
 )
 EMOJI_FONT_PATH = DEFAULT_EMOJI_FONT_PATH
 FACE_STRIP_RAISE = 16
-FACE_ICON_SIZE = 70
+FACE_ICON_SIZE = 80
 FACE_SUPERSAMPLE = 4
 AIR_QUALITY_GLYPHS = {
     AIR_QUALITY_AWFUL: "🤮",
@@ -88,14 +88,14 @@ def draw_face_strip(img: Image.Image, model: DisplayModel, box: tuple[int, int, 
     x0, y0, x1, y1 = box
     box_width = x1 - x0 + 1
     box_height = y1 - y0 + 1
-    cell_width = box_width / len(AIR_QUALITY_LEVELS)
+    face_count = len(AIR_QUALITY_LEVELS)
+    cell_width = box_width / face_count
     face_size = max(24, min(FACE_ICON_SIZE, box_height - 10))
+    icon_y = y0 + max(0, (box_height - face_size) // 2)
 
     for index, quality_level in enumerate(AIR_QUALITY_LEVELS):
-        cell_x0 = x0 + int(round(index * cell_width))
-        cell_x1 = x0 + int(round((index + 1) * cell_width)) - 1
-        icon_x = cell_x0 + max(0, ((cell_x1 - cell_x0 + 1) - face_size) // 2)
-        icon_y = y0 + max(0, (box_height - face_size) // 2)
+        center_x = x0 + ((index + 0.5) * cell_width)
+        icon_x = int(round(center_x - (face_size / 2)))
         icon_color = model.co2_color if model.co2_quality == quality_level else COLOR_MUTED
         icon = render_face_icon(face_size, quality_level, icon_color)
         img.paste(icon, (icon_x, icon_y), icon)
