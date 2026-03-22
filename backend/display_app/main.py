@@ -155,19 +155,26 @@ def main() -> int:
             except Exception as exc:
                 print(f"Display brightness update failed: {exc}", file=sys.stderr)
 
-            try:
-                if should_refresh:
+            if should_refresh:
+                try:
                     latest_model = build_display_model(read_display_snapshot(conn))
                     next_refresh_at = now + refresh_interval
-                if latest_model is not None:
+                except Exception as exc:
+                    display.display(make_error_frame("Data read error", display_size))
+                    print(f"Display data refresh failed: {exc}", file=sys.stderr)
+                    next_refresh_at = now + refresh_interval
+                    latest_model = None
+
+            if latest_model is not None:
+                try:
                     current_signature = (current_layout.name, latest_model)
                     if current_signature != last_drawn_signature:
                         display.display(current_layout.render(latest_model, display_size))
                         last_drawn_signature = current_signature
-            except Exception as exc:
-                display.display(make_error_frame("No CO2 data", display_size))
-                print(f"Display update failed: {exc}", file=sys.stderr)
-                next_refresh_at = now + refresh_interval
+                except Exception as exc:
+                    display.display(make_error_frame("Configuration error", display_size))
+                    print(f"Display render failed: {exc}", file=sys.stderr)
+                    next_refresh_at = now + refresh_interval
 
             sleep_until_refresh = max(0.0, next_refresh_at - time.monotonic())
             if button_event_fd is None:
