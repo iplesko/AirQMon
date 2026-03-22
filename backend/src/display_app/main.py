@@ -8,10 +8,6 @@ import sys
 import time
 from typing import Optional
 
-import RPi.GPIO as GPIO
-from luma.core.interface.serial import spi
-from luma.lcd.device import ili9341
-
 from db import get_conn, init_db
 from display_control import DISPLAY_TOGGLE_SIGNAL, remove_display_pid, write_display_pid
 from paths import DEFAULT_DB_PATH
@@ -37,6 +33,14 @@ DISPLAY_PWM_HZ = 1000
 DISPLAY_IDLE_POLL_SECONDS = 0.1
 
 
+def load_display_runtime():
+    import RPi.GPIO as GPIO
+    from luma.core.interface.serial import spi
+    from luma.lcd.device import ili9341
+
+    return GPIO, spi, ili9341
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Show CO2 with trend, temperature, and humidity on a Waveshare 2.4 inch SPI display."
@@ -55,13 +59,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def is_night_mode_active() -> bool:
-    hour = datetime.now().hour
+def is_night_mode_active_for_hour(hour: int) -> bool:
     if NIGHT_MODE_START_HOUR == NIGHT_MODE_END_HOUR:
         return True
     if NIGHT_MODE_START_HOUR < NIGHT_MODE_END_HOUR:
         return NIGHT_MODE_START_HOUR <= hour < NIGHT_MODE_END_HOUR
     return hour >= NIGHT_MODE_START_HOUR or hour < NIGHT_MODE_END_HOUR
+
+
+def is_night_mode_active() -> bool:
+    return is_night_mode_active_for_hour(datetime.now().hour)
 
 
 def effective_brightness(configured_brightness: int, night_mode_enabled: bool) -> int:
@@ -73,6 +80,12 @@ def effective_brightness(configured_brightness: int, night_mode_enabled: bool) -
 
 def main() -> int:
     args = parse_args()
+    try:
+        GPIO, spi, ili9341 = load_display_runtime()
+    except Exception as exc:
+        print(f"Display runtime init failed: {exc}", file=sys.stderr)
+        return 2
+
     conn = get_conn(args.db)
     init_db(conn)
     GPIO.setwarnings(False)

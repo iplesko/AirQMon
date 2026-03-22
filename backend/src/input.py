@@ -8,10 +8,7 @@ import sys
 import time
 from typing import Optional
 
-import RPi.GPIO as GPIO
-
 from display_control import request_layout_toggle
-from display_app.button import ButtonEdge, open_gpiochip_event_fd, wait_for_button_edge
 
 LAYOUT_BUTTON_GPIO = 24
 BUTTON_BOUNCE_MS = 250
@@ -20,6 +17,14 @@ BUTTON_IDLE_POLL_SECONDS = 1.0
 BUTTON_HOLD_POLL_SECONDS = 0.1
 POWEROFF_CANDIDATE_PATHS = ("/usr/sbin/poweroff", "/sbin/poweroff")
 SYSTEMCTL_CANDIDATE_PATHS = ("/usr/bin/systemctl", "/bin/systemctl")
+
+
+def load_input_runtime():
+    import RPi.GPIO as GPIO
+
+    from display_app.button import ButtonEdge, open_gpiochip_event_fd, wait_for_button_edge
+
+    return GPIO, ButtonEdge, open_gpiochip_event_fd, wait_for_button_edge
 
 
 def _first_existing_path(paths: tuple[str, ...]) -> Optional[str]:
@@ -67,6 +72,12 @@ def request_system_shutdown(shutdown_command: Optional[tuple[str, ...]]) -> bool
 
 
 def main() -> int:
+    try:
+        GPIO, ButtonEdge, open_gpiochip_event_fd, wait_for_button_edge = load_input_runtime()
+    except Exception as exc:
+        print(f"Input runtime init failed: {exc}", file=sys.stderr)
+        return 2
+
     GPIO.setwarnings(False)
 
     stop = False
