@@ -2,6 +2,7 @@
 
 __pycache__/
 backend/data.db
+backend/preview_out/
 backend/alerter.env
 backend/.env
 backend/private_key.pem

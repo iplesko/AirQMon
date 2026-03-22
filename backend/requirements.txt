@@ -4,5 +4,5 @@ scd4x==0.0.2
 pywebpush==2.3.0
 luma.lcd==2.13.0
 pillow==12.1.1
-RPi.GPIO==0.7.1
-spidev==3.8
+RPi.GPIO==0.7.1 ; platform_system == "Linux"
+spidev==3.8 ; platform_system == "Linux"

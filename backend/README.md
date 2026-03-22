@@ -122,6 +122,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+On non-Linux development machines, the Raspberry Pi-specific packages (`RPi.GPIO` and `spidev`) are skipped automatically.
+
 ## Display Setup (Waveshare 2.4" SPI)
 
 On Raspberry Pi, install required system packages:
@@ -220,6 +222,20 @@ cd backend
 source venv/bin/activate
 python display.py --db ./data.db --interval 5
 ```
+
+### 5. Preview the Display Locally
+
+You can render the same display layouts to PNG files on your development machine without SPI hardware.
+
+Example with fake readings:
+
+```bash
+cd backend
+source venv/bin/activate
+python display_preview.py --co2 1750 --temperature 23.4 --humidity 46 --trend 3.8
+```
+
+This writes `display-preview-standard.png` and `display-preview-faces.png` into `backend/preview_out/`.
 
 ## Run as systemd Services (Linux / Raspberry Pi)
 
