@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
 import base64
@@ -20,33 +21,10 @@ from db import (
 from paths import DEFAULT_DB_PATH, FRONTEND_DIST_DIR
 from runtime_config import RuntimeConfig, persist_runtime_config, read_runtime_config, validate_runtime_config
 
-APP = app = FastAPI()
 DEFAULT_POINTS = 500
 MAX_POINTS = 10000
 
 DB_PATH = os.getenv('AIRQMON_DB_PATH', str(DEFAULT_DB_PATH))
-
-conn = get_conn(DB_PATH)
-init_db(conn)
-
-
-@app.middleware('http')
-async def set_static_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    path = request.url.path
-
-    if path == '/service-worker.js':
-        # Service worker scripts must be revalidated aggressively to pick up updates.
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-    elif path in {'/', '/index.html'}:
-        # HTML shell should revalidate so clients discover new asset hashes quickly.
-        response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-
-    return response
 
 
 class ConfigPatchRequest(BaseModel):
@@ -89,88 +67,6 @@ def get_vapid_public_key() -> str:
     return base64.urlsafe_b64encode(public_bytes).rstrip(b'=').decode('ascii')
 
 
-@app.get('/api/latest')
-def api_latest():
-    row = latest(conn)
-    if not row:
-        raise HTTPException(status_code=404, detail='no data')
-    return row
-
-
-@app.get('/api/data')
-def api_data(
-    start: Optional[int] = None,
-    end: Optional[int] = None,
-    points: int = Query(DEFAULT_POINTS, ge=1, le=MAX_POINTS),
-):
-    now = int(time.time())
-    if end is None:
-        end = now
-    if start is None:
-        # default to last 24 hours
-        start = end - 24 * 3600
-    if start > end:
-        raise HTTPException(status_code=400, detail='start must be <= end')
-
-    rows = range_query(conn, int(start), int(end))
-    rows = sieve_evenly(rows, points)
-    return {'data': rows}
-
-
-@app.get('/api/config')
-def api_config():
-    return asdict(read_runtime_config(conn, persist_defaults=True))
-
-
-@app.put('/api/config')
-def api_put_config(payload: ConfigPatchRequest):
-    current_config = read_runtime_config(conn, persist_defaults=True)
-    updated_config = RuntimeConfig(
-        co2_high=payload.co2_high,
-        co2_clear=payload.co2_clear,
-        cooldown_seconds=payload.cooldown_seconds,
-        display_brightness=current_config.display_brightness if payload.display_brightness is None else payload.display_brightness,
-        night_mode_enabled=current_config.night_mode_enabled if payload.night_mode_enabled is None else payload.night_mode_enabled,
-    )
-    try:
-        validate_runtime_config(updated_config)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    persist_runtime_config(conn, updated_config)
-    return asdict(updated_config)
-
-
-@app.get('/api/push/public-key')
-def api_push_public_key():
-    return {'public_key': get_vapid_public_key()}
-
-
-@app.post('/api/push/subscribe')
-def api_push_subscribe(payload: PushSubscriptionRequest):
-    endpoint = payload.endpoint.strip()
-    p256dh = payload.keys.p256dh.strip()
-    auth = payload.keys.auth.strip()
-
-    if not endpoint or not p256dh or not auth:
-        raise HTTPException(status_code=400, detail='endpoint and keys must not be empty')
-    if not endpoint.startswith('https://'):
-        raise HTTPException(status_code=400, detail='endpoint must use https')
-
-    upsert_push_subscription(conn, endpoint, p256dh, auth)
-    return {'ok': True}
-
-
-@app.post('/api/push/unsubscribe')
-def api_push_unsubscribe(payload: PushUnsubscribeRequest):
-    endpoint = payload.endpoint.strip()
-    if not endpoint:
-        raise HTTPException(status_code=400, detail='endpoint must not be empty')
-
-    deleted = delete_push_subscription(conn, endpoint)
-    return {'ok': True, 'deleted': deleted > 0}
-
-
 def sieve_evenly(rows, target_points: int):
     count = len(rows)
     if target_points >= count:
@@ -185,7 +81,112 @@ def sieve_evenly(rows, target_points: int):
     return [rows[i] for i in indices]
 
 
-# Serve frontend static files from ../frontend/dist (mount after API routes so API works)
-if FRONTEND_DIST_DIR.is_dir():
-    app.mount('/', StaticFiles(directory=str(FRONTEND_DIST_DIR), html=True), name='static')
+def create_app(*, conn=None, frontend_dist_dir: Optional[Path] = FRONTEND_DIST_DIR) -> FastAPI:
+    app = FastAPI()
+    db_conn = conn if conn is not None else get_conn(DB_PATH)
+    init_db(db_conn)
+    app.state.db_conn = db_conn
+
+    @app.middleware('http')
+    async def set_static_cache_headers(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+
+        if path == '/service-worker.js':
+            # Service worker scripts must be revalidated aggressively to pick up updates.
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        elif path in {'/', '/index.html'}:
+            # HTML shell should revalidate so clients discover new asset hashes quickly.
+            response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+
+        return response
+
+    @app.get('/api/latest')
+    def api_latest():
+        row = latest(db_conn)
+        if not row:
+            raise HTTPException(status_code=404, detail='no data')
+        return row
+
+    @app.get('/api/data')
+    def api_data(
+        start: Optional[int] = None,
+        end: Optional[int] = None,
+        points: int = Query(DEFAULT_POINTS, ge=1, le=MAX_POINTS),
+    ):
+        now = int(time.time())
+        if end is None:
+            end = now
+        if start is None:
+            # default to last 24 hours
+            start = end - 24 * 3600
+        if start > end:
+            raise HTTPException(status_code=400, detail='start must be <= end')
+
+        rows = range_query(db_conn, int(start), int(end))
+        rows = sieve_evenly(rows, points)
+        return {'data': rows}
+
+    @app.get('/api/config')
+    def api_config():
+        return asdict(read_runtime_config(db_conn, persist_defaults=True))
+
+    @app.put('/api/config')
+    def api_put_config(payload: ConfigPatchRequest):
+        current_config = read_runtime_config(db_conn, persist_defaults=True)
+        updated_config = RuntimeConfig(
+            co2_high=payload.co2_high,
+            co2_clear=payload.co2_clear,
+            cooldown_seconds=payload.cooldown_seconds,
+            display_brightness=current_config.display_brightness if payload.display_brightness is None else payload.display_brightness,
+            night_mode_enabled=current_config.night_mode_enabled if payload.night_mode_enabled is None else payload.night_mode_enabled,
+        )
+        try:
+            validate_runtime_config(updated_config)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        persist_runtime_config(db_conn, updated_config)
+        return asdict(updated_config)
+
+    @app.get('/api/push/public-key')
+    def api_push_public_key():
+        return {'public_key': get_vapid_public_key()}
+
+    @app.post('/api/push/subscribe')
+    def api_push_subscribe(payload: PushSubscriptionRequest):
+        endpoint = payload.endpoint.strip()
+        p256dh = payload.keys.p256dh.strip()
+        auth = payload.keys.auth.strip()
+
+        if not endpoint or not p256dh or not auth:
+            raise HTTPException(status_code=400, detail='endpoint and keys must not be empty')
+        if not endpoint.startswith('https://'):
+            raise HTTPException(status_code=400, detail='endpoint must use https')
+
+        upsert_push_subscription(db_conn, endpoint, p256dh, auth)
+        return {'ok': True}
+
+    @app.post('/api/push/unsubscribe')
+    def api_push_unsubscribe(payload: PushUnsubscribeRequest):
+        endpoint = payload.endpoint.strip()
+        if not endpoint:
+            raise HTTPException(status_code=400, detail='endpoint must not be empty')
+
+        deleted = delete_push_subscription(db_conn, endpoint)
+        return {'ok': True, 'deleted': deleted > 0}
+
+    frontend_dir = None if frontend_dist_dir is None else Path(frontend_dist_dir)
+    # Serve frontend static files from ../frontend/dist (mount after API routes so API works)
+    if frontend_dir is not None and frontend_dir.is_dir():
+        app.mount('/', StaticFiles(directory=str(frontend_dir), html=True), name='static')
+
+    return app
+
+
+APP = app = create_app()
 

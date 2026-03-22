@@ -18,14 +18,19 @@ from db import get_conn, init_db
 
 
 @pytest.fixture
-def db_path() -> Path:
+def test_tmp_dir() -> Path:
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
     case_dir = TEST_TMP_DIR / uuid4().hex
     case_dir.mkdir()
     try:
-        yield case_dir / "airqmon-test.db"
+        yield case_dir
     finally:
         shutil.rmtree(case_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def db_path(test_tmp_dir: Path) -> Path:
+    return test_tmp_dir / "airqmon-test.db"
 
 
 @pytest.fixture
